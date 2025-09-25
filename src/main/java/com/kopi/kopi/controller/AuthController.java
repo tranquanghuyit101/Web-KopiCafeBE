@@ -7,71 +7,64 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.kopi.kopi.dto.LoginRequest;
-import com.kopi.kopi.dto.LoginResponse;
+import com.kopi.kopi.dto.JwtLoginRequest;
 import com.kopi.kopi.security.UserPrincipal;
+import com.kopi.kopi.security.JwtTokenProvider;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
+import java.util.Map;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/apiv1/auth")
 public class AuthController {
 	private final AuthenticationManager authenticationManager;
-	private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
+	private final JwtTokenProvider jwtTokenProvider;
 
-	public AuthController(AuthenticationManager authenticationManager) {
+	public AuthController(AuthenticationManager authenticationManager, JwtTokenProvider jwtTokenProvider) {
 		this.authenticationManager = authenticationManager;
+		this.jwtTokenProvider = jwtTokenProvider;
 	}
 
 	@PostMapping("/login")
-	public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+	public ResponseEntity<?> login(@RequestBody JwtLoginRequest request) {
 		try {
 			Authentication authentication = authenticationManager.authenticate(
-					new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
+				new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
 			SecurityContextHolder.getContext().setAuthentication(authentication);
-			httpRequest.getSession(true);
-			securityContextRepository.saveContext(SecurityContextHolder.getContext(), httpRequest, httpResponse);
 
-			UserDetails principal = (UserDetails) authentication.getPrincipal();
-			String role = principal.getAuthorities().stream().findFirst().map(a -> a.getAuthority()).orElse("");
-			role = role.replace("ROLE_", "").toLowerCase();
-			String fullName = principal instanceof UserPrincipal ? ((UserPrincipal) principal).getUser().getFullName() : principal.getUsername();
-			return ResponseEntity.ok(new LoginResponse(principal.getUsername(), role, fullName));
+			UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+			int roleNumber = principal.getUser().getRole() != null && principal.getUser().getRole().getRoleId() != null
+				? principal.getUser().getRole().getRoleId()
+				: 1;
+			String token = jwtTokenProvider.generateToken(
+				principal.getUsername(),
+				roleNumber,
+				principal.getUser().getUserId(),
+				principal.getUser().getFullName(),
+				principal.getUser().getEmail(),
+				request.isRememberMe()
+			);
+
+			return ResponseEntity.ok(Map.of(
+				"data", Map.of("token", token)
+			));
 		} catch (BadCredentialsException ex) {
 			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Sai tài khoản hoặc mật khẩu");
 		}
 	}
 
-	@GetMapping("/me")
-	public ResponseEntity<?> me() {
-		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-		if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-			return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-		}
-		UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
-		String role = principal.getAuthorities().stream().findFirst().map(a -> a.getAuthority()).orElse("");
-		role = role.replace("ROLE_", "").toLowerCase();
-		return ResponseEntity.ok(new LoginResponse(principal.getUsername(), role, principal.getUser().getFullName()));
+	@DeleteMapping("/logout")
+	public ResponseEntity<?> logout() {
+		return ResponseEntity.ok(Map.of("message", "logged out"));
 	}
 
 	@PostMapping("/logout")
-	public ResponseEntity<?> logout(HttpServletRequest request) {
-		HttpSession session = request.getSession(false);
-		if (session != null) {
-			session.invalidate();
-		}
-		SecurityContextHolder.clearContext();
-		return ResponseEntity.ok().build();
+	public ResponseEntity<?> logoutPost() {
+		return ResponseEntity.ok(Map.of("message", "logged out"));
 	}
 } 

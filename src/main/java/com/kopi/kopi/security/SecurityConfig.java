@@ -9,9 +9,17 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 
 @Configuration
 public class SecurityConfig {
+	private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+	public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+	}
+
 	@Bean
 	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
@@ -22,20 +30,25 @@ public class SecurityConfig {
 		return authenticationConfiguration.getAuthenticationManager();
 	}
 
-			@Bean
-		public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-			http
-				.csrf(csrf -> csrf.disable())
-				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-				.authorizeHttpRequests(auth -> auth
-					.requestMatchers("/", "/index.html", "/static/**", "/app.js").permitAll()
-					.requestMatchers("/menu", "/menu.html", "/menu.js").permitAll()
-					.requestMatchers("/profile", "/profile.html", "/profile.js").permitAll()
-					.requestMatchers("/api/auth/login", "/api/auth/me").permitAll()
-					.requestMatchers("/api/menu", "/v1/**").permitAll()
-					.anyRequest().authenticated()
-				)
-				.formLogin(form -> form.disable());
-			return http.build();
-		}
+	@Bean
+	public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+		http
+			.csrf(csrf -> csrf.disable())
+			.cors(cors -> {})
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.authorizeHttpRequests(auth -> auth
+				.requestMatchers("/", "/index.html", "/static/**", "/app.js").permitAll()
+				.requestMatchers("/menu", "/menu.html", "/menu.js").permitAll()
+				.requestMatchers("/profile", "/profile.html", "/profile.js").permitAll()
+				.requestMatchers("/apiv1/auth/login", "/apiv1/auth/logout").permitAll()
+				.requestMatchers(HttpMethod.POST, "/apiv1/auth/logout").permitAll()
+				.requestMatchers(HttpMethod.GET, "/apiv1/products/**").permitAll()
+				.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+				.anyRequest().authenticated()
+			)
+			.formLogin(form -> form.disable());
+
+		http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+		return http.build();
+	}
 } 
