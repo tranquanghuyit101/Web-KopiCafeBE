@@ -29,6 +29,7 @@ CREATE TABLE dbo.users (
     full_name         NVARCHAR(150)  NOT NULL,
     role_id           INT         NOT NULL,
     status            NVARCHAR(20)   NOT NULL,
+    avatar_url        NVARCHAR(255)  NULL,
     created_at        DATETIME2(3)   NOT NULL,
     updated_at        DATETIME2(3)   NOT NULL,
     last_login_at     DATETIME2(3)   NULL
@@ -51,7 +52,6 @@ CREATE TABLE dbo.user_addresses (
     user_address_id INT IDENTITY(1,1) NOT NULL,
     user_id         INT        NOT NULL,
     address_id      INT        NOT NULL,
-    recipient_name  NVARCHAR(150) NULL,
     is_default      BIT           NOT NULL,
     created_at      DATETIME2(3)  NOT NULL
 );

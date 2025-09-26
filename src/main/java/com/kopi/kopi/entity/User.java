@@ -36,7 +36,7 @@ public class User {
 	@Column(name = "full_name", nullable = false, length = 150)
 	private String fullName;
 
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@ManyToOne(fetch = FetchType.EAGER, optional = false)
 	@JoinColumn(name = "role_id", nullable = false)
 	@ToString.Exclude
 	private Role role;
