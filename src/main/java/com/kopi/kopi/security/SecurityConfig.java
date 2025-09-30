@@ -11,6 +11,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.http.HttpMethod;
+import static org.springframework.security.config.Customizer.withDefaults;
+
 
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
@@ -18,38 +20,71 @@ import org.springframework.security.oauth2.client.web.DefaultOAuth2Authorization
 import org.springframework.context.annotation.Lazy;
 @Configuration
 public class SecurityConfig {
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+	public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+	}
+
+	@Bean
+	public PasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+
+	@Bean
+	public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
+		return authenticationConfiguration.getAuthenticationManager();
+	}
+
+  @Bean
+  @org.springframework.core.annotation.Order(0)
+  public SecurityFilterChain authEndpoints(HttpSecurity http) throws Exception {
+      http
+              .securityMatcher("/apiv1/auth/**") // chỉ áp cho các path auth
+              .csrf(csrf -> csrf.disable())
+              .cors(withDefaults())
+              .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+              .authorizeHttpRequests(auth -> auth
+                      .requestMatchers(
+                              "/apiv1/auth/login",
+                              "/apiv1/auth/forgotPass",
+                              "/apiv1/auth/forgot-password",
+                              "/apiv1/auth/logout"
+                        ).permitAll()
+                        .requestMatchers("/apiv1/auth/change-password").authenticated()
+                        .anyRequest().permitAll()
+                );
+        return http.build();
     }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+  @Bean
+  public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
+      var cfg = new org.springframework.web.cors.CorsConfiguration();
+      cfg.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+      cfg.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
+      cfg.setAllowedHeaders(java.util.List.of("*"));
+      cfg.setAllowCredentials(true);
+      var source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
+      source.registerCorsConfiguration("/**", cfg);
+      return source;
+  }
 
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
-        return authenticationConfiguration.getAuthenticationManager();
-    }
+  @Bean
+  public OAuth2AuthorizationRequestResolver authorizationRequestResolver(ClientRegistrationRepository repo) {
+      DefaultOAuth2AuthorizationRequestResolver resolver =
+              new DefaultOAuth2AuthorizationRequestResolver(repo, "/oauth2/authorization");
+      resolver.setAuthorizationRequestCustomizer(customizer ->
+              customizer.additionalParameters(params -> {
+                  params.put("prompt", "select_account");
+              })
+      );
+      return resolver;
+  }
 
-    @Bean
-    public OAuth2AuthorizationRequestResolver authorizationRequestResolver(ClientRegistrationRepository repo) {
-        DefaultOAuth2AuthorizationRequestResolver resolver =
-                new DefaultOAuth2AuthorizationRequestResolver(repo, "/oauth2/authorization");
-        resolver.setAuthorizationRequestCustomizer(customizer ->
-                customizer.additionalParameters(params -> {
-                    params.put("prompt", "select_account");
-
-                })
-        );
-        return resolver;
-    }
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, @Lazy OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler) throws Exception {
-        http
+  @Bean
+  @org.springframework.core.annotation.Order(1)
+  public SecurityFilterChain filterChain(HttpSecurity http, @Lazy OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler) throws Exception {
+      http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -65,12 +100,9 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form.disable())
-                .oauth2Login(oauth -> oauth
-
-                        .successHandler(oAuth2LoginSuccessHandler)
+                .oauth2Login(oauth -> oauth.successHandler(oAuth2LoginSuccessHandler)
                 );
-
-
+      
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
