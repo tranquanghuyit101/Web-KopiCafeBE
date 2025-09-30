@@ -1,34 +1,27 @@
 package com.kopi.kopi.dto;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.*;
+
 import java.time.LocalDateTime;
 
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class) // auto camelCase -> snake_case
 public class ProfileResponse {
-	private String username;
-	private String fullName;
-	private String email;
-	private String phone;
-	private String role;
-	private String status;
-	private LocalDateTime createdAt;
-	private LocalDateTime updatedAt;
+    private Integer userId;
+    private String username;
+    private String displayName;
+    private String email;
+    private String phoneNumber;
 
-	public ProfileResponse(String username, String fullName, String email, String phone, String role, String status, LocalDateTime createdAt, LocalDateTime updatedAt) {
-		this.username = username;
-		this.fullName = fullName;
-		this.email = email;
-		this.phone = phone;
-		this.role = role;
-		this.status = status;
-		this.createdAt = createdAt;
-		this.updatedAt = updatedAt;
-	}
+    private String address;
 
-	public String getUsername() { return username; }
-	public String getFullName() { return fullName; }
-	public String getEmail() { return email; }
-	public String getPhone() { return phone; }
-	public String getRole() { return role; }
-	public String getStatus() { return status; }
-	public LocalDateTime getCreatedAt() { return createdAt; }
-	public LocalDateTime getUpdatedAt() { return updatedAt; }
-} 
+    private String role;
+    private String status;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
