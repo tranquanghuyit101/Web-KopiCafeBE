@@ -29,11 +29,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		this.tokenProvider = tokenProvider;
 		this.userDetailsService = userDetailsService;
 	}
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String uri = request.getRequestURI();        // ví dụ: /Kopi/apiv1/auth/forgotPass
+        String ctx = request.getContextPath();       // "/Kopi"
+        if (ctx != null && !ctx.isEmpty() && uri.startsWith(ctx)) {
+            uri = uri.substring(ctx.length());       // còn: /apiv1/auth/forgotPass
+        }
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
 
-	@Override
+        // CHỈ bỏ qua filter cho các endpoint công khai này:
+        if (uri.equals("/apiv1/auth/login")) return true;
+        if (uri.equals("/apiv1/auth/forgotPass") || uri.equals("/apiv1/auth/forgot-password")) return true;
+
+        // Còn lại (kể cả /apiv1/auth/change-password) phải qua filter
+        return false;
+    }
+
+    @Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {
-		String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (shouldNotFilter(request)) {               // SKIP hẳn cho auth endpoints
+            filterChain.doFilter(request, response);
+            return;
+        }
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
 		if (header != null && header.startsWith("Bearer ")) {
 			String token = header.substring(7);
 			if (tokenProvider.validateToken(token)) {

@@ -11,6 +11,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.http.HttpMethod;
+import static org.springframework.security.config.Customizer.withDefaults;
+
 
 @Configuration
 public class SecurityConfig {
@@ -30,7 +32,28 @@ public class SecurityConfig {
 		return authenticationConfiguration.getAuthenticationManager();
 	}
 
+    @Bean
+    @org.springframework.core.annotation.Order(0)
+    public SecurityFilterChain authEndpoints(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/apiv1/auth/**") // chỉ áp cho các path auth
+                .csrf(csrf -> csrf.disable())
+                .cors(withDefaults())
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/apiv1/auth/login",
+                                "/apiv1/auth/forgotPass",
+                                "/apiv1/auth/forgot-password",
+                                "/apiv1/auth/logout"
+                        ).permitAll()
+                        .requestMatchers("/apiv1/auth/change-password").authenticated()
+                        .anyRequest().permitAll()
+                );
+        return http.build();
+    }
 	@Bean
+    @org.springframework.core.annotation.Order(1)
 	public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 		http
 			.csrf(csrf -> csrf.disable())
@@ -51,4 +74,16 @@ public class SecurityConfig {
 		http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 		return http.build();
 	}
+    @Bean
+    public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
+        var cfg = new org.springframework.web.cors.CorsConfiguration();
+        cfg.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+        cfg.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
+        cfg.setAllowedHeaders(java.util.List.of("*"));
+        cfg.setAllowCredentials(true);
+        var source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", cfg);
+        return source;
+    }
+
 } 
