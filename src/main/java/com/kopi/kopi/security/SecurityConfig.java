@@ -96,7 +96,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/apiv1/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/apiv1/products/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll() // 🟨
+                        .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/apiv1/auth/force-change-password").authenticated()
                         .anyRequest().authenticated()
                 )
                 .formLogin(form -> form.disable())

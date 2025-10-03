@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.kopi.kopi.payload.request.ForceChangePasswordRequest;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import com.kopi.kopi.dto.JwtLoginRequest;
 import com.kopi.kopi.security.UserPrincipal;
@@ -136,6 +138,31 @@ public class AuthController {
             default -> "/"; // home
         };
     }
+    // ADD: Ép đổi mật khẩu khi user đang dùng mật khẩu tạm (mustChangePassword=true).
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/force-change-password")
+    public ResponseEntity<?> forceChangePassword(
+            @AuthenticationPrincipal com.kopi.kopi.security.UserPrincipal principal,
+            @RequestBody ForceChangePasswordRequest req
+    ) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Unauthorized"));
+        }
+        if (req == null || req.getNew_password() == null || req.getNew_password().length() < 6) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Password must be at least 6 characters"));
+        }
+
+        String email = principal.getUser().getEmail();
+
+        // Chỉ cho đổi khi đang bị ép đổi
+        if (!userService.mustChangePassword(email)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Not required to force-change"));
+        }
+
+        userService.changePassword(email, req.getNew_password()); // change + clear flag ở service
+        return ResponseEntity.ok(Map.of("message", "Password changed successfully"));
+    }
+
 
     @PostMapping("/apiv1/auth/google")
     public ResponseEntity<?> loginWithGoogleIdToken(@RequestBody Map<String, String> body) {
