@@ -47,6 +47,9 @@ public class SecurityConfig {
               .authorizeHttpRequests(auth -> auth
                       .requestMatchers(
                               "/apiv1/auth/login",
+                              "/apiv1/auth/register",     // 🟨 permit đăng ký
+                              "/apiv1/auth/verify-otp",   // 🟨 permit xác thực OTP
+                              "/apiv1/auth/google",       // 🟨 permit google id token endpoint
                               "/apiv1/auth/forgotPass",
                               "/apiv1/auth/forgot-password",
                               "/apiv1/auth/logout"

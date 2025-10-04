@@ -45,6 +45,10 @@ public class User {
 	@Column(name = "status", nullable = false, length = 20)
 	private UserStatus status;
 
+    // 🟨 BỔ SUNG: cờ xác thực email (map cột dbo.users.email_verified BIT NOT NULL)
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified; // default 'false' (fail/chưa xác thực)
+
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 

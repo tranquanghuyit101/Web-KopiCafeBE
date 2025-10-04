@@ -5,16 +5,20 @@ import com.kopi.kopi.repository.UserRepository;
 import com.kopi.kopi.security.ForceChangeStore;
 import com.kopi.kopi.service.EmailService;
 import com.kopi.kopi.service.IUserService;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class UserServiceImpl implements IUserService {
-
+    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
@@ -23,7 +27,7 @@ public class UserServiceImpl implements IUserService {
     public UserServiceImpl(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            EmailService emailService,
+            @Qualifier("smtpEmailService") EmailService emailService, // match bean theo name
             ForceChangeStore forceChangeStore
     ) {
         this.userRepository = userRepository;
