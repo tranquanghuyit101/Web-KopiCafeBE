@@ -1,0 +1,98 @@
+@startuml
+title Admin - Create Discount (Frontend + Backend)
+
+actor Admin as User
+participant "Browser (React)" as Browser
+participant "FE Router" as FERouter
+participant "NewPromo Page (/promo/new)" as NewPromo
+participant "FE Promo API\n(utils/dataProvider/promo.js)" as FEApi
+participant Axios as HTTPClient
+participant "SecurityFilterChain" as Sec
+participant "JwtAuthenticationFilter" as JWT
+participant "PromoController" as PromoCtrl
+collections "DiscountCodeRepository" as CodeRepo
+collections "DiscountEventRepository" as EventRepo
+collections "ProductRepository" as ProdRepo
+database Database
+
+== Navigate to Create Promo ==
+User -> Browser: Open /promo/new
+Browser -> FERouter: match route
+alt Not authenticated or not admin
+  FERouter -> Browser: Redirect (CheckIsAdmin) to "/"
+else Admin authenticated
+  FERouter -> NewPromo: Render NewPromo (default mode: Discount Code)
+end
+
+== Mode A: Create Discount Code ==
+NewPromo -> NewPromo: Admin fills form\n(coupon_code, discount_type/value, min_order_amount, total_usage_limit, start/end)
+NewPromo -> FEApi: createPromoEntry(payload, token, controller)
+FEApi -> HTTPClient: POST {host}/apiv1/promo\nHeaders: Authorization: Bearer <token>\nBody: JSON payload
+
+HTTPClient -> Sec: apply security chain
+Sec -> JWT: validate & extract principal
+JWT -> PromoCtrl: authenticated request
+
+PromoCtrl -> PromoCtrl: validate required fields
+PromoCtrl -> CodeRepo: findByCodeIgnoreCase(code)
+CodeRepo --> PromoCtrl: exists?/empty
+alt Duplicate
+  PromoCtrl --> HTTPClient: 409 Conflict {message}
+  HTTPClient --> FEApi: error
+  FEApi --> NewPromo: show toast (duplicate code)
+else OK
+  PromoCtrl -> PromoCtrl: parse discount_type/value\nparseDateTime(start_date/end_date)
+  PromoCtrl -> CodeRepo: save(DiscountCode)
+  CodeRepo -> Database: INSERT discount_codes
+  Database --> CodeRepo: success
+  CodeRepo --> PromoCtrl: saved
+  PromoCtrl --> HTTPClient: 200 OK {message:"created"}
+  HTTPClient --> FEApi: response
+  FEApi --> NewPromo: success
+  NewPromo -> FERouter: navigate to /products\n(show success toast)
+end
+
+== Mode B: Create Discount Event ==
+NewPromo -> NewPromo: Admin switches to "Add discount event"
+NewPromo -> NewPromo: Multi-select product_ids via search
+NewPromo -> FEApi: createPromoEvent(payload(name, discount_type/value, start/end, product_ids), token)
+FEApi -> HTTPClient: POST {host}/apiv1/promo/events\nHeaders: Authorization: Bearer <token>
+
+HTTPClient -> Sec: apply security chain
+Sec -> JWT: validate & extract principal
+JWT -> PromoCtrl: authenticated request
+
+PromoCtrl -> PromoCtrl: validate name, product_ids non-empty\nparse discount & dates
+PromoCtrl -> EventRepo: new DiscountEvent(...)
+loop for each product_id
+  PromoCtrl -> ProdRepo: findById(product_id)
+  ProdRepo -> Database: SELECT product
+  Database --> ProdRepo: Product
+  ProdRepo --> PromoCtrl: Product
+  PromoCtrl -> EventRepo: attach DiscountEventProduct(event, product)
+end
+EventRepo -> Database: INSERT discount_events + discount_event_products
+Database --> EventRepo: success
+EventRepo --> PromoCtrl: saved
+PromoCtrl --> HTTPClient: 200 OK {message:"created"}
+HTTPClient --> FEApi: response
+FEApi --> NewPromo: success
+NewPromo -> FERouter: navigate to /products\n(show success toast)
+
+== Error / Edge cases ==
+alt Token expired / invalid
+  HTTPClient --> NewPromo: 401 Unauthorized
+  NewPromo -> FERouter: redirect to /auth/login
+else Forbidden (server-side)
+  PromoCtrl --> HTTPClient: 403 Forbidden
+  HTTPClient --> NewPromo: error toast, stay on page
+else Network issues/CORS/offline
+  HTTPClient --> NewPromo: Axios error (message: "Network Error")
+  NewPromo -> NewPromo: show toast 'Network Error'
+else Validation: missing end_date
+  PromoCtrl --> HTTPClient: 400 Bad Request {message}
+  HTTPClient --> NewPromo: error toast
+end
+
+@enduml
+
