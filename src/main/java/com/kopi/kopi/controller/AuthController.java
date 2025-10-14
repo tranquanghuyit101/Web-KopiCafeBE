@@ -10,8 +10,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,6 +31,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+// import DTO & Service cho OTP register/verify
+import com.kopi.kopi.dto.ApiMessage;
+import com.kopi.kopi.dto.RegisterRequest;
+import com.kopi.kopi.dto.VerifyOtpRequest;
+import jakarta.validation.Valid;
+import com.kopi.kopi.service.IAuthService;
+
 @RestController
 @RequestMapping("/apiv1/auth")
 public class AuthController {
@@ -39,14 +46,17 @@ public class AuthController {
 
     // ADD
     private final IUserService userService;
+    private final IAuthService authService;
 
     // THÊM userService vào constructor (không xoá tham số cũ)
     public AuthController(AuthenticationManager authenticationManager,
                           JwtTokenProvider jwtTokenProvider,
-                          IUserService userService) { // ADD
+                          IUserService userService,
+                          IAuthService authService) { // ADD
         this.authenticationManager = authenticationManager;
         this.jwtTokenProvider = jwtTokenProvider;
         this.userService = userService; // ADD
+        this.authService = authService; //
     }
 
     @PostMapping("/login")
@@ -172,5 +182,19 @@ public class AuthController {
         }
         //
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(Map.of("msg","Implement verify + issue JWT"));
+    }
+
+    @PreAuthorize("permitAll()") // 🟨 cho phép gọi không cần auth
+    @PostMapping("/register")    // full URL: /Kopi/apiv1/auth/register (vì có context-path /Kopi)
+    public ResponseEntity<ApiMessage> register(@Valid @RequestBody RegisterRequest req) { // 🟨
+        authService.registerOrResend(req);                                                // 🟨
+        return ResponseEntity.ok(new ApiMessage("Đã gửi (hoặc gửi lại) OTP nếu email chưa kích hoạt")); // 🟨
+    }
+
+    @PreAuthorize("permitAll()") // 🟨
+    @PostMapping("/verify-otp")   // full URL: /Kopi/apiv1/auth/verify-otp
+    public ResponseEntity<ApiMessage> verify(@Valid @RequestBody VerifyOtpRequest req) { // 🟨
+        authService.verifyOtp(req.email(), req.otp());                                    // 🟨
+        return ResponseEntity.ok(new ApiMessage("Xác thực thành công"));                  // 🟨
     }
 }
