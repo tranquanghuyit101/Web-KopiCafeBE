@@ -1,0 +1,89 @@
+@startuml
+title Customer - View Order History (Frontend + Backend)
+
+actor Customer as User
+participant "Browser (React)" as Browser
+participant "FE Router" as FERouter
+participant "History Page (/history)" as HistoryUI
+participant "FE Transaction API\n(utils/dataProvider/transaction.js)" as FEApi
+participant Axios as HTTPClient
+participant "SecurityFilterChain" as Sec
+participant "JwtAuthenticationFilter" as JWT
+participant "TransactionController" as TxController
+collections "OrderRepository" as OrderRepo
+database Database
+
+== Navigate to History ==
+User -> Browser: Open /history
+Browser -> FERouter: match route
+alt Not authenticated
+  FERouter -> Browser: Redirect to /auth/login (CheckAuth)
+else Authenticated
+  FERouter -> HistoryUI: Render History component
+
+  note right of HistoryUI
+    On mount/useEffect:
+    getTransactionHistory({ page }, token, controller)
+    - page defaults to 1
+    - AbortController used for cancellation
+  end note
+
+  HistoryUI -> FEApi: getTransactionHistory({ page }, token, controller)
+  FEApi -> HTTPClient: GET {host}/apiv1/userPanel/transactions\nHeaders: Authorization: Bearer <token>\nQuery: page, limit
+
+  HTTPClient -> Sec: apply security chain
+  Sec -> JWT: validate & extract principal from JWT
+  JWT -> TxController: pass authenticated request
+
+  TxController -> TxController: userId = SecurityContextHolder.principal.userId
+  TxController -> OrderRepo: findByCustomer_UserId(userId, pageable)
+  OrderRepo -> Database: SELECT orders + order_details (paged)
+  Database --> OrderRepo: Page<OrderEntity>
+  OrderRepo --> TxController: page result
+
+  TxController -> TxController: map to { data: [items], meta: {currentPage, totalPage, prev, next} }
+  TxController --> HTTPClient: 200 OK JSON
+  HTTPClient --> FEApi: response
+  FEApi --> HistoryUI: { data, meta }
+  HistoryUI -> Browser: Render cards grid (first product, total, status, +N more)
+
+  == Select an order to view detail ==
+  User -> HistoryUI: Click a history card
+  HistoryUI -> FEApi: getTransactionDetail(id, token, controller)
+  FEApi -> HTTPClient: GET {host}/apiv1/transactions/{id}\nHeaders: Authorization: Bearer <token>
+
+  HTTPClient -> Sec: apply security chain
+  Sec -> JWT: validate & extract principal
+  JWT -> TxController: pass authenticated request
+
+  TxController -> TxController: authorize id belongs to userId
+  TxController -> OrderRepo: findById(id)
+  OrderRepo -> Database: SELECT order + details + payment
+  Database --> OrderRepo: OrderEntity
+  OrderRepo --> TxController: entity
+  TxController -> TxController: map to { data: [detail] } with products[], grand_total, status_name, payment_name, delivery_name, transaction_time, delivery_address, notes
+  TxController --> HTTPClient: 200 OK JSON
+  HTTPClient --> FEApi: response
+  FEApi --> HistoryUI: detail data
+  HistoryUI -> Browser: Open detail modal (products list + info)
+
+  == Pagination (next/prev) ==
+  User -> HistoryUI: Click next/prev
+  HistoryUI -> FERouter: update URL ?page=<n>
+  FERouter -> HistoryUI: re-render (useEffect)
+  HistoryUI -> FEApi: getTransactionHistory with new page
+  ... (same request/response flow as above) ...
+
+  == Optional branches ==
+  alt Token expired/invalid
+    HTTPClient --> HistoryUI: 401 Unauthorized
+    HistoryUI -> FERouter: navigate /auth/login
+  else User navigates away quickly
+    HistoryUI -> FEApi: controller.abort()
+    FEApi -> HTTPClient: cancel request
+    HTTPClient --> HistoryUI: Axios cancel error (ignored)
+  end
+end
+
+@enduml
+

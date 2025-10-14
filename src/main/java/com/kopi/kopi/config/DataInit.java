@@ -14,6 +14,9 @@ import com.kopi.kopi.entity.Category;
 import com.kopi.kopi.entity.Product;
 import com.kopi.kopi.repository.CategoryRepository;
 import com.kopi.kopi.repository.ProductRepository;
+import com.kopi.kopi.repository.OrderRepository;
+import com.kopi.kopi.entity.OrderEntity;
+import com.kopi.kopi.entity.OrderDetail;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -21,7 +24,7 @@ import java.math.BigDecimal;
 @Configuration
 public class DataInit {
 	@Bean
-	CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder) {
+	CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository) {
 		return args -> {
 			// Seed roles
 			if (roleRepository.count() == 0) {
@@ -157,6 +160,41 @@ public class DataInit {
 				customer.setCreatedAt(now);
 				customer.setUpdatedAt(now);
 				userRepository.save(customer);
+			}
+
+			// Seed sample completed orders for the seeded customer
+			if (orderRepository.count() == 0) {
+				LocalDateTime now = LocalDateTime.now();
+				User customer = userRepository.findByUsername("customer").orElseGet(() -> userRepository.findById(3).orElse(null));
+				if (customer != null) {
+					java.util.List<Product> products = productRepository.findAll();
+					int max = Math.min(3, products.size());
+					for (int i = 0; i < max; i++) {
+						Product prod = products.get(i);
+						OrderEntity order = new OrderEntity();
+						order.setOrderCode("ORD-" + now.toLocalDate() + "-" + (i + 1));
+						order.setCustomer(customer);
+						order.setStatus("COMPLETED");
+						order.setSubtotalAmount(prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO);
+						order.setDiscountAmount(BigDecimal.ZERO);
+						order.setNote("Seed order " + (i + 1));
+						order.setCreatedAt(now);
+						order.setUpdatedAt(now);
+
+						OrderDetail detail = new OrderDetail();
+						detail.setOrder(order);
+						detail.setProduct(prod);
+						detail.setProductNameSnapshot(prod.getName());
+						detail.setUnitPrice(prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO);
+						detail.setQuantity(1);
+
+						java.util.List<OrderDetail> details = new java.util.ArrayList<>();
+						details.add(detail);
+						order.setOrderDetails(details);
+
+						orderRepository.save(order);
+					}
+				}
 			}
 		};
 	}

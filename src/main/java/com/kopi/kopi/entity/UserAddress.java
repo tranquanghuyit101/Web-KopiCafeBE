@@ -27,9 +27,6 @@ public class UserAddress {
 	@ToString.Exclude
 	private Address address;
 
-	@Column(name = "recipient_name", length = 150)
-	private String recipientName;
-
 	@Column(name = "is_default", nullable = false)
 	private Boolean defaultAddress;
 

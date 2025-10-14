@@ -63,7 +63,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				Collection<? extends GrantedAuthority> authorities = Collections.emptyList();
 				try {
 					int roleNumber = Integer.parseInt(String.valueOf(roleClaim));
-					String roleName = roleNumber >= 2 ? "ADMIN" : "CUSTOMER";
+					String roleName;
+					switch (roleNumber) {
+						case 1 -> roleName = "ADMIN";
+						case 2 -> roleName = "STAFF";
+						default -> roleName = "CUSTOMER";
+					}
 					authorities = Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + roleName));
 				} catch (Exception ignored) {}
 
