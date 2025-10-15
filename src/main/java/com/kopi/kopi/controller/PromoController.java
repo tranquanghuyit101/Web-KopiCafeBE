@@ -13,9 +13,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.List;
+import java.time.LocalDateTime;
+
+import com.kopi.kopi.service.IPromoService;
 
 @RestController
 @RequestMapping("/apiv1/promo")
@@ -23,11 +25,13 @@ public class PromoController {
     private final DiscountCodeRepository discountCodeRepository;
     private final DiscountEventRepository discountEventRepository;
     private final ProductRepository productRepository;
+    private final IPromoService promoService;
 
-    public PromoController(DiscountCodeRepository discountCodeRepository, DiscountEventRepository discountEventRepository, ProductRepository productRepository) {
+    public PromoController(DiscountCodeRepository discountCodeRepository, DiscountEventRepository discountEventRepository, ProductRepository productRepository, IPromoService promoService) {
         this.discountCodeRepository = discountCodeRepository;
         this.discountEventRepository = discountEventRepository;
         this.productRepository = productRepository;
+        this.promoService = promoService;
     }
 
     public record CreateCodePayload(
@@ -122,6 +126,118 @@ public class PromoController {
 
         discountEventRepository.save(ev);
         return ResponseEntity.ok(Map.of("message", "created"));
+    }
+
+    /**
+     * List all discounts (codes + events) with optional filters and pagination
+     * Params:
+     * - page (default 1)
+     * - limit (default 8)
+     * - available (true|false) - when true, include only active and not ended items (includes current and upcoming)
+     * - status (all|current|upcoming) - alternative to available for finer filtering
+     * - searchByName (optional) - matches code or name contains (case-insensitive)
+     */
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public Map<String, Object> list(
+            @RequestParam(name = "page", required = false, defaultValue = "1") Integer page,
+            @RequestParam(name = "limit", required = false, defaultValue = "8") Integer limit,
+            @RequestParam(name = "available", required = false) String available,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "searchByName", required = false, defaultValue = "") String searchByName
+    ) {
+        return promoService.list(page, limit, available, status, searchByName);
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getOne(@PathVariable("id") Integer id) {
+        var dc = discountCodeRepository.findById(id).orElse(null);
+        if (dc != null) {
+            return ResponseEntity.ok(Map.of(
+                    "id", dc.getDiscountCodeId(),
+                    "kind", "CODE",
+                    "title", dc.getCode(),
+                    "description", dc.getDescription(),
+                    "discountType", dc.getDiscountType() != null ? dc.getDiscountType().name() : null,
+                    "discountValue", dc.getDiscountValue(),
+                    "minOrderAmount", dc.getMinOrderAmount(),
+                    "startsAt", dc.getStartsAt(),
+                    "endsAt", dc.getEndsAt(),
+                    "active", dc.getActive()
+            ));
+        }
+        var ev = discountEventRepository.findById(id).orElse(null);
+        if (ev != null) {
+            return ResponseEntity.ok(Map.of(
+                    "id", ev.getDiscountEventId(),
+                    "kind", "EVENT",
+                    "title", ev.getName(),
+                    "description", ev.getDescription(),
+                    "discountType", ev.getDiscountType() != null ? ev.getDiscountType().name() : null,
+                    "discountValue", ev.getDiscountValue(),
+                    "startsAt", ev.getStartsAt(),
+                    "endsAt", ev.getEndsAt(),
+                    "active", ev.getActive()
+            ));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    public record UpdatePromoPayload(
+            String name,
+            String desc,
+            String discount_type,
+            String discount_value,
+            String coupon_code,
+            String start_date,
+            String end_date
+    ) {}
+
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> update(@PathVariable("id") Integer id, @RequestBody UpdatePromoPayload body) {
+        var dc = discountCodeRepository.findById(id).orElse(null);
+        if (dc != null) {
+            if (body.coupon_code() != null && !body.coupon_code().isBlank()) dc.setCode(body.coupon_code().trim().toUpperCase());
+            if (body.desc() != null) dc.setDescription(body.desc());
+            if (body.discount_type() != null) dc.setDiscountType(parseDiscountType(body.discount_type()));
+            if (body.discount_value() != null) dc.setDiscountValue(parseDecimal(body.discount_value(), dc.getDiscountValue()));
+            if (body.start_date() != null) dc.setStartsAt(parseDateTime(body.start_date()));
+            if (body.end_date() != null) dc.setEndsAt(parseDateTime(body.end_date()));
+            discountCodeRepository.save(dc);
+            return ResponseEntity.ok(Map.of("message", "updated"));
+        }
+        var ev = discountEventRepository.findById(id).orElse(null);
+        if (ev != null) {
+            if (body.name() != null) ev.setName(body.name());
+            if (body.desc() != null) ev.setDescription(body.desc());
+            if (body.discount_type() != null) ev.setDiscountType(parseDiscountType(body.discount_type()));
+            if (body.discount_value() != null) ev.setDiscountValue(parseDecimal(body.discount_value(), ev.getDiscountValue()));
+            if (body.start_date() != null) ev.setStartsAt(parseDateTime(body.start_date()));
+            if (body.end_date() != null) ev.setEndsAt(parseDateTime(body.end_date()));
+            discountEventRepository.save(ev);
+            return ResponseEntity.ok(Map.of("message", "updated"));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> softDelete(@PathVariable("id") Integer id) {
+        var dc = discountCodeRepository.findById(id).orElse(null);
+        if (dc != null) {
+            dc.setActive(false);
+            discountCodeRepository.save(dc);
+            return ResponseEntity.ok(Map.of("message", "deleted"));
+        }
+        var ev = discountEventRepository.findById(id).orElse(null);
+        if (ev != null) {
+            ev.setActive(false);
+            discountEventRepository.save(ev);
+            return ResponseEntity.ok(Map.of("message", "deleted"));
+        }
+        return ResponseEntity.notFound().build();
     }
 
     private DiscountType parseDiscountType(String t) {

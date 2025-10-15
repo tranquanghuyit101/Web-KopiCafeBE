@@ -509,7 +509,7 @@ ALTER TABLE dbo.employee_shifts
 -- USERS
 CREATE UNIQUE INDEX UX_users_username ON dbo.users(username);
 CREATE UNIQUE INDEX UX_users_email ON dbo.users(email);
-CREATE UNIQUE INDEX UX_users_phone ON dbo.users(phone);
+CREATE UNIQUE INDEX UX_users_phone ON dbo.users(phone) WHERE phone IS NOT NULL;
 CREATE INDEX IX_users_role_id ON dbo.users(role_id);
 CREATE INDEX IX_users_position_id ON dbo.users(position_id);
 
