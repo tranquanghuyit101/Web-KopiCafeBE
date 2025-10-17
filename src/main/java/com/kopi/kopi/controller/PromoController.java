@@ -154,32 +154,53 @@ public class PromoController {
     public ResponseEntity<?> getOne(@PathVariable("id") Integer id) {
         var dc = discountCodeRepository.findById(id).orElse(null);
         if (dc != null) {
-            return ResponseEntity.ok(Map.of(
-                    "id", dc.getDiscountCodeId(),
-                    "kind", "CODE",
-                    "title", dc.getCode(),
-                    "description", dc.getDescription(),
-                    "discountType", dc.getDiscountType() != null ? dc.getDiscountType().name() : null,
-                    "discountValue", dc.getDiscountValue(),
-                    "minOrderAmount", dc.getMinOrderAmount(),
-                    "startsAt", dc.getStartsAt(),
-                    "endsAt", dc.getEndsAt(),
-                    "active", dc.getActive()
-            ));
+            return ResponseEntity.ok(
+                    Map.ofEntries(
+                            Map.entry("id", dc.getDiscountCodeId()),
+                            Map.entry("kind", "CODE"),
+                            Map.entry("title", dc.getCode()),
+                            Map.entry("couponCode", dc.getCode()),
+                            Map.entry("description", dc.getDescription()),
+                            Map.entry("discountType", dc.getDiscountType() != null ? dc.getDiscountType().name() : null),
+                            Map.entry("discountValue", dc.getDiscountValue()),
+                            Map.entry("minOrderAmount", dc.getMinOrderAmount()),
+                            Map.entry("totalUsageLimit", dc.getTotalUsageLimit()),
+                            Map.entry("startsAt", dc.getStartsAt()),
+                            Map.entry("endsAt", dc.getEndsAt()),
+                            Map.entry("active", dc.getActive())
+                    )
+            );
         }
         var ev = discountEventRepository.findById(id).orElse(null);
         if (ev != null) {
-            return ResponseEntity.ok(Map.of(
-                    "id", ev.getDiscountEventId(),
-                    "kind", "EVENT",
-                    "title", ev.getName(),
-                    "description", ev.getDescription(),
-                    "discountType", ev.getDiscountType() != null ? ev.getDiscountType().name() : null,
-                    "discountValue", ev.getDiscountValue(),
-                    "startsAt", ev.getStartsAt(),
-                    "endsAt", ev.getEndsAt(),
-                    "active", ev.getActive()
-            ));
+            java.util.List<Integer> pids = new java.util.ArrayList<>();
+            java.util.List<java.util.Map<String, Object>> plist = new java.util.ArrayList<>();
+            for (var dep : ev.getProducts()) {
+                var p = dep.getProduct();
+                if (p == null) continue;
+                pids.add(p.getProductId());
+                plist.add(java.util.Map.of(
+                        "id", p.getProductId(),
+                        "name", p.getName(),
+                        "price", p.getPrice(),
+                        "category_name", p.getCategory() != null ? p.getCategory().getName() : null
+                ));
+            }
+            return ResponseEntity.ok(
+                    Map.ofEntries(
+                            Map.entry("id", ev.getDiscountEventId()),
+                            Map.entry("kind", "EVENT"),
+                            Map.entry("title", ev.getName()),
+                            Map.entry("description", ev.getDescription()),
+                            Map.entry("discountType", ev.getDiscountType() != null ? ev.getDiscountType().name() : null),
+                            Map.entry("discountValue", ev.getDiscountValue()),
+                            Map.entry("startsAt", ev.getStartsAt()),
+                            Map.entry("endsAt", ev.getEndsAt()),
+                            Map.entry("active", ev.getActive()),
+                            Map.entry("productIds", pids),
+                            Map.entry("products", plist)
+                    )
+            );
         }
         return ResponseEntity.notFound().build();
     }
@@ -190,8 +211,11 @@ public class PromoController {
             String discount_type,
             String discount_value,
             String coupon_code,
+            String min_order_amount,
+            String total_usage_limit,
             String start_date,
-            String end_date
+            String end_date,
+            java.util.List<Integer> product_ids
     ) {}
 
     @PatchMapping("/{id}")
@@ -203,6 +227,8 @@ public class PromoController {
             if (body.desc() != null) dc.setDescription(body.desc());
             if (body.discount_type() != null) dc.setDiscountType(parseDiscountType(body.discount_type()));
             if (body.discount_value() != null) dc.setDiscountValue(parseDecimal(body.discount_value(), dc.getDiscountValue()));
+            if (body.min_order_amount() != null) dc.setMinOrderAmount(parseDecimal(body.min_order_amount(), dc.getMinOrderAmount()));
+            if (body.total_usage_limit() != null) dc.setTotalUsageLimit(parseInteger(body.total_usage_limit(), dc.getTotalUsageLimit()));
             if (body.start_date() != null) dc.setStartsAt(parseDateTime(body.start_date()));
             if (body.end_date() != null) dc.setEndsAt(parseDateTime(body.end_date()));
             discountCodeRepository.save(dc);
@@ -216,6 +242,18 @@ public class PromoController {
             if (body.discount_value() != null) ev.setDiscountValue(parseDecimal(body.discount_value(), ev.getDiscountValue()));
             if (body.start_date() != null) ev.setStartsAt(parseDateTime(body.start_date()));
             if (body.end_date() != null) ev.setEndsAt(parseDateTime(body.end_date()));
+            if (body.product_ids() != null) {
+                // Replace products
+                ev.getProducts().clear();
+                for (Integer pid : body.product_ids()) {
+                    Product p = productRepository.findById(pid).orElse(null);
+                    if (p == null) continue;
+                    DiscountEventProduct dep = new DiscountEventProduct();
+                    dep.setDiscountEvent(ev);
+                    dep.setProduct(p);
+                    ev.getProducts().add(dep);
+                }
+            }
             discountEventRepository.save(ev);
             return ResponseEntity.ok(Map.of("message", "updated"));
         }
@@ -275,5 +313,3 @@ public class PromoController {
         return null;
     }
 }
-
-
