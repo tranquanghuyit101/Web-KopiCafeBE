@@ -131,6 +131,73 @@ public class TransactionController {
         return ResponseEntity.ok(Map.of("data", List.of(detail)));
     }
 
+    @GetMapping("/transactions")
+    public Map<String, Object> listPending(
+            @RequestParam(name = "status", required = false, defaultValue = "PENDING") String status,
+            @RequestParam(name = "page", required = false, defaultValue = "1") Integer page,
+            @RequestParam(name = "limit", required = false, defaultValue = "20") Integer limit
+    ) {
+        Pageable pageable = PageRequest.of(Math.max(page - 1, 0), Math.max(limit, 1));
+        Page<OrderEntity> pageData = orderRepository.findByStatus(status, pageable);
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (OrderEntity o : pageData.getContent()) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", o.getOrderId());
+            m.put("status", o.getStatus());
+            m.put("address", o.getAddress() != null ? o.getAddress().getAddressLine() : null);
+            m.put("created_at", o.getCreatedAt());
+            m.put("total", defaultBigDecimal(o.getTotalAmount()));
+
+            List<Map<String, Object>> products = new ArrayList<>();
+            if (o.getOrderDetails() != null) {
+                for (OrderDetail d : o.getOrderDetails()) {
+                    Map<String, Object> pd = new HashMap<>();
+                    pd.put("product_name", d.getProductNameSnapshot());
+                    pd.put("qty", d.getQuantity());
+                    pd.put("subtotal", defaultBigDecimal(d.getLineTotal()));
+                    products.add(pd);
+                }
+            }
+            m.put("products", products);
+            items.add(m);
+        }
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("currentPage", pageData.getNumber() + 1);
+        meta.put("totalPage", pageData.getTotalPages());
+        meta.put("prev", pageData.hasPrevious());
+        meta.put("next", pageData.hasNext());
+        return Map.of("data", items, "meta", meta);
+    }
+
+    @PatchMapping("/transactions/{id}/status")
+    public ResponseEntity<?> changeStatus(
+            @PathVariable("id") Integer id,
+            @RequestBody Map<String, Object> payload
+    ) {
+        String status = String.valueOf(payload.getOrDefault("status", ""));
+        if (!Objects.equals(status, "COMPLETED") && !Objects.equals(status, "CANCELLED") && !Objects.equals(status, "PENDING")) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Invalid status"));
+        }
+        OrderEntity order = orderRepository.findById(id).orElseThrow();
+        order.setStatus(status);
+        order.setUpdatedAt(java.time.LocalDateTime.now());
+        // Update payment status in tandem
+        if (order.getPayments() != null && !order.getPayments().isEmpty()) {
+            Payment payment = order.getPayments().get(0);
+            if (Objects.equals(status, "COMPLETED")) {
+                payment.setStatus(PaymentStatus.PAID);
+            } else if (Objects.equals(status, "CANCELLED")) {
+                payment.setStatus(PaymentStatus.CANCELLED);
+            } else if (Objects.equals(status, "PENDING")) {
+                payment.setStatus(PaymentStatus.PENDING);
+            }
+        }
+        orderRepository.save(order);
+        return ResponseEntity.ok(Map.of("message", "OK"));
+    }
+
     @PostMapping("/transactions")
     public ResponseEntity<?> createTransaction(@RequestBody Map<String, Object> body) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -143,6 +210,8 @@ public class TransactionController {
         String notes = (String) body.getOrDefault("notes", "");
         String addressText = (String) body.getOrDefault("address", "");
         Integer paymentId = Integer.valueOf(String.valueOf(body.getOrDefault("payment_id", 1)));
+        boolean paid = false;
+        try { paid = Boolean.parseBoolean(String.valueOf(body.getOrDefault("paid", false))); } catch (Exception ignored) {}
         Integer customerIdFromBody = null;
         if (body.containsKey("customer_id") && body.get("customer_id") != null) {
             try { customerIdFromBody = Integer.valueOf(String.valueOf(body.get("customer_id"))); } catch (Exception ignored) {}
@@ -204,7 +273,7 @@ public class TransactionController {
 
         OrderEntity order = OrderEntity.builder()
                 .orderCode("ORD-" + System.currentTimeMillis())
-                .status("pending")
+                .status(paid ? "COMPLETED" : "PENDING")
                 .subtotalAmount(subtotal)
                 .discountAmount(BigDecimal.ZERO)
                 .note(notes)
@@ -227,7 +296,7 @@ public class TransactionController {
                     .order(order)
                     .amount(subtotal)
                     .method(method)
-                    .status(PaymentStatus.PENDING)
+                    .status(paid ? PaymentStatus.PAID : PaymentStatus.PENDING)
                     .createdAt(java.time.LocalDateTime.now())
                     .build();
             order.getPayments().add(payment);
