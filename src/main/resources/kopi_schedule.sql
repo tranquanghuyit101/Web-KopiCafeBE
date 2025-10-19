@@ -375,7 +375,7 @@ ALTER TABLE dbo.order_details
 
 ALTER TABLE dbo.payments
     ADD CONSTRAINT CK_payments_method CHECK (method IN (N'cash', N'banking')),
-        CONSTRAINT CK_payments_status CHECK (status IN (N'pending', N'paid'));
+        CONSTRAINT CK_payments_status CHECK (status IN (N'pending', N'paid', N'cancelled'));
 
  -- Removed CHECK for dbo.schedules
 
