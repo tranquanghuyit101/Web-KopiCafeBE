@@ -88,4 +88,9 @@ public class OrderEntity {
 	@EqualsAndHashCode.Exclude
 	@Builder.Default
 	private List<DiscountCodeRedemption> discountCodeRedemptions = new ArrayList<>();
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "table_id")
+	@ToString.Exclude
+	private DiningTable table;
 } 
