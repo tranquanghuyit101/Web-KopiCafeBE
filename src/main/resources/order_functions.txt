@@ -1,0 +1,106 @@
+Backend (Web-KopiCafeBE) - Order feature endpoints and services
+
+src/main/java/com/kopi/kopi/controller/TransactionController.java
+- getUserTransactions(page, limit) [GET /apiv1/userPanel/transactions]
+  Description: Returns paginated orders for the authenticated customer only. Each item includes id, grand_total, status_name, and products (name/img/qty/subtotal/size).
+  Inputs: query params page (>=1), limit (>=1). Auth required (Bearer), user is taken from SecurityContext.
+  Output: { data: [...], meta: { currentPage, totalPage, prev, next } }
+  Limits to test:
+  - Pagination bounds: page=1, large page, page beyond total
+  - limit=1, typical (9), large limit
+  - Customer with 0 orders -> empty data
+  - Product details present/mapped from snapshots
+  Test cases:
+  - 200 OK: page=1, limit=3, valid token for user with >=3 orders
+  - 200 OK: user with 0 orders -> data=[], correct meta
+  - 200 OK: page beyond total -> data=[], meta.prev=true, meta.next=false
+  - 401 Unauthorized: missing/invalid token
+
+- getTransactionDetail(id) [GET /apiv1/transactions/{id}]
+  Description: Returns a single order detail for the authenticated customer IF the order belongs to them; otherwise 403. Response wraps detail inside data array of size 1.
+  Inputs: path id (integer). Auth required.
+  Output: { data: [ { id, receiver_name, delivery_address, notes, status_name, transaction_time, payment_name, grand_total, products[...] } ] }
+  Limits to test:
+  - Authorization: different user's order -> 403
+  - Not found id -> 404 (orElseThrow)
+  - Orders without payments or address -> null/empty mapping
+  - Products list populated from OrderDetail
+  Test cases:
+  - 200 OK: own order id returns correct fields and one-element data array
+  - 403 Forbidden: access another user's order id
+  - 404 Not Found: non-existent id
+  - 401 Unauthorized: missing token
+
+- listPending(status, type, page, limit) [GET /apiv1/transactions]
+  Description: Lists orders filtered by status and type. type=TABLE filters orders with table!=null, type=SHIPPING filters address!=null, otherwise ALL. Includes products summary.
+  Inputs: status (string, default PENDING), type (ALL|TABLE|SHIPPING, case-insensitive), page, limit. No auth enforcement in code.
+  Output: { data: [ { id, status, address, created_at, table_number, total, products[...] } ], meta }
+  Limits to test:
+  - type=TABLE vs SHIPPING vs ALL behavior
+  - status filter exact match
+  - Pagination edges
+  - Case-insensitive type handling
+  - Security exposure (endpoint accessible without auth)
+  Test cases:
+  - 200 OK: default (no params) returns PENDING across ALL types
+  - 200 OK: type=TABLE only table orders returned
+  - 200 OK: type=SHIPPING only shipping orders returned
+  - 200 OK: status=COMPLETED returns completed orders
+  - 200 OK: type=table (lowercase) works
+  - 200 OK: page beyond total -> empty data
+
+- changeStatus(id, payload) [PATCH /apiv1/transactions/{id}/status]
+  Description: Changes order status to PENDING|COMPLETED|CANCELLED; updates payment status in tandem if present. If order has a table, calls tableService.setAvailableIfNoPendingOrders.
+  Inputs: path id, JSON body { status: "PENDING"|"COMPLETED"|"CANCELLED" }.
+  Output: 200 { message: "OK" } on success; 400 on invalid status.
+  Limits to test:
+  - Validation: invalid/missing status -> 400
+  - Not found id -> 500 (orElseThrow) [note behavior]
+  - Payment status sync: PENDING->PENDING, COMPLETED->PAID, CANCELLED->CANCELLED
+  - Table availability update triggered when transitioning last pending -> available
+  Test cases:
+  - 200 OK: to COMPLETED changes order.status and payment.status=PAID
+  - 200 OK: to CANCELLED sets payment.status=CANCELLED
+  - 200 OK: to PENDING sets payment.status=PENDING
+  - 400 Bad Request: status=UNKNOWN
+  - 500: non-existent id
+
+- createTransaction(body) [POST /apiv1/transactions]
+  Description: Creates an order for the authenticated user (role 3) or by staff (role 2). Computes subtotal from products. Optionally sets address, attaches payment with method (1=CASH, 2=BANKING) and status (PAID if paid=true else PENDING). Returns new order id.
+  Inputs (JSON): products: [ { product_id, qty } ], notes, address, payment_id (1|2), paid (bool), customer_id (staff only, optional).
+  Output: 200 { message: "OK", data: { id } }.
+  Limits to test:
+  - products empty -> order created with no details (allowed by code)
+  - payment_id mapping: 1->CASH, 2->BANKING, other -> defaults CASH
+  - paid=true -> status COMPLETED and payment PAID
+  - Role differences: role=3 (customer) ignores customer_id; role=2 (staff) can set customer_id; address created only when provided in allowed branches
+  - Invalid product_id -> 500 (orElseThrow)
+  Test cases:
+  - 200 OK: customer role, 2 items, paid=false -> status PENDING, payment PENDING
+  - 200 OK: staff role with customer_id, address provided -> address persisted
+  - 200 OK: paid=true -> status COMPLETED, payment PAID
+  - 200 OK: products=[] -> id returned, orderDetails empty
+  - 500: product_id not found
+  - 401 Unauthorized: missing token
+
+src/main/java/com/kopi/kopi/controller/GuestOrderController.java
+- createGuestTableOrder(req) [POST /apiv1/guest/table-orders]
+  Description: Creates a table order by qr_token or table_number for guests (no auth). Validates table exists and not DISABLED; requires non-empty products. Builds Order with status based on paid, attaches payment, associates to table, and updates table occupancy if pending.
+  Inputs (JSON): { qr_token (string) or table_number (int), products: [ { product_id, qty } ], notes, payment_id (1|2), paid (bool) }
+  Output: 200 { message: "OK", data: { id, table_number, status } }.
+  Limits to test:
+  - Require qr_token or table_number (one can be missing) -> both missing -> 400
+  - Table not found -> 404; table status DISABLED -> 400
+  - products empty -> 400
+  - payment_id mapping (1=CASH, 2=BANKING)
+  - paid=true -> status COMPLETED, payment PAID; else PENDING
+  - Invalid product_id -> 500 (orElseThrow)
+  Test cases:
+  - 200 OK: valid qr_token, 1 product, paid=false -> PENDING, data includes id and table_number
+  - 200 OK: valid table_number, multiple products, paid=true -> COMPLETED
+  - 400 Bad Request: missing qr_token and table_number
+  - 404 Not Found: unknown qr_token/table_number
+  - 400 Bad Request: products=[]
+  - 500: invalid product_id
+
+
