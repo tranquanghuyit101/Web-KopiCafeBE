@@ -130,4 +130,6 @@ Xem chi tiết từng dòng/nhánh: `target/site/jacoco/com.kopi.kopi.service.im
 - Test: `src/test/java/com/kopi/kopi/service/impl/OrderServiceImplTest.java`
 - Coverage: `target/site/jacoco/`
 
+### Slides
+https://www.canva.com/design/DAG2hyCihKA/XGE_-GxJer5G4_NTOs-Itg/edit?utm_content=DAG2hyCihKA&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
 
