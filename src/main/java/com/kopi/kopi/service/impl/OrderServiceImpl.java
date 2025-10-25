@@ -27,7 +27,9 @@ public class OrderServiceImpl implements OrderService {
     private final TableService tableService;
     private final DiningTableRepository diningTableRepository;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository) {
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository,
+            AddressRepository addressRepository, UserRepository userRepository, TableService tableService,
+            DiningTableRepository diningTableRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -53,7 +55,8 @@ public class OrderServiceImpl implements OrderService {
                 for (OrderDetail d : o.getOrderDetails()) {
                     Product p = d.getProduct();
                     Map<String, Object> pd = new HashMap<>();
-                    pd.put("product_name", d.getProductNameSnapshot() != null ? d.getProductNameSnapshot() : (p != null ? p.getName() : null));
+                    pd.put("product_name", d.getProductNameSnapshot() != null ? d.getProductNameSnapshot()
+                            : (p != null ? p.getName() : null));
                     pd.put("product_img", p != null ? p.getImgUrl() : null);
                     pd.put("qty", d.getQuantity());
                     pd.put("subtotal", defaultBigDecimal(d.getLineTotal()));
@@ -111,7 +114,8 @@ public class OrderServiceImpl implements OrderService {
                 Product p = d.getProduct();
                 Map<String, Object> pd = new HashMap<>();
                 pd.put("id", d.getOrderDetailId());
-                pd.put("product_name", d.getProductNameSnapshot() != null ? d.getProductNameSnapshot() : (p != null ? p.getName() : null));
+                pd.put("product_name", d.getProductNameSnapshot() != null ? d.getProductNameSnapshot()
+                        : (p != null ? p.getName() : null));
                 pd.put("product_img", p != null ? p.getImgUrl() : null);
                 pd.put("qty", d.getQuantity());
                 pd.put("size", "Regular");
@@ -172,7 +176,8 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public ResponseEntity<?> changeStatus(Integer id, Map<String, Object> payload) {
         String status = String.valueOf(payload.getOrDefault("status", ""));
-        if (!Objects.equals(status, "COMPLETED") && !Objects.equals(status, "CANCELLED") && !Objects.equals(status, "PENDING")) {
+        if (!Objects.equals(status, "COMPLETED") && !Objects.equals(status, "CANCELLED")
+                && !Objects.equals(status, "PENDING")) {
             return ResponseEntity.badRequest().body(Map.of("message", "Invalid status"));
         }
         OrderEntity order = orderRepository.findById(id).orElseThrow();
@@ -208,10 +213,16 @@ public class OrderServiceImpl implements OrderService {
         String addressText = (String) body.getOrDefault("address", "");
         Integer paymentId = Integer.valueOf(String.valueOf(body.getOrDefault("payment_id", 1)));
         boolean paid = false;
-        try { paid = Boolean.parseBoolean(String.valueOf(body.getOrDefault("paid", false))); } catch (Exception ignored) {}
+        try {
+            paid = Boolean.parseBoolean(String.valueOf(body.getOrDefault("paid", false)));
+        } catch (Exception ignored) {
+        }
         Integer customerIdFromBody = null;
         if (body.containsKey("customer_id") && body.get("customer_id") != null) {
-            try { customerIdFromBody = Integer.valueOf(String.valueOf(body.get("customer_id"))); } catch (Exception ignored) {}
+            try {
+                customerIdFromBody = Integer.valueOf(String.valueOf(body.get("customer_id")));
+            } catch (Exception ignored) {
+            }
         }
 
         BigDecimal subtotal = BigDecimal.ZERO;
@@ -235,7 +246,8 @@ public class OrderServiceImpl implements OrderService {
         User customer = null;
         // Determine flow: customer (role_id = 3) vs staff (role_id = 2)
         if (roleId != null && roleId == 3) {
-            // Customer placing order: customer = current user, created_by = current user, address optional
+            // Customer placing order: customer = current user, created_by = current user,
+            // address optional
             customer = userRepository.findById(userId).orElse(null);
             if (addressText != null && !addressText.isBlank()) {
                 addr = Address.builder()
@@ -245,7 +257,8 @@ public class OrderServiceImpl implements OrderService {
                 addr = addressRepository.save(addr);
             }
         } else if (roleId != null && roleId == 2) {
-            // Staff placing order: if customer_id is provided, attach customer; if null, keep null; address must be null when customer is null
+            // Staff placing order: if customer_id is provided, attach customer; if null,
+            // keep null; address must be null when customer is null
             if (customerIdFromBody != null) {
                 customer = userRepository.findById(customerIdFromBody).orElse(null);
                 if (addressText != null && !addressText.isBlank()) {
@@ -288,7 +301,8 @@ public class OrderServiceImpl implements OrderService {
 
         if (paymentId != null) {
             PaymentMethod method = PaymentMethod.CASH;
-            if (paymentId == 2) method = PaymentMethod.BANKING;
+            if (paymentId == 2)
+                method = PaymentMethod.BANKING;
             Payment payment = Payment.builder()
                     .order(order)
                     .amount(subtotal)
@@ -317,11 +331,14 @@ public class OrderServiceImpl implements OrderService {
         if (table == null && req.table_number() != null) {
             table = diningTableRepository.findByNumber(req.table_number()).orElse(null);
         }
-        if (table == null) return ResponseEntity.status(404).body(Map.of("message", "Table not found"));
-        if (Objects.equals(table.getStatus(), "DISABLED")) return ResponseEntity.badRequest().body(Map.of("message", "Table disabled"));
+        if (table == null)
+            return ResponseEntity.status(404).body(Map.of("message", "Table not found"));
+        if (Objects.equals(table.getStatus(), "DISABLED"))
+            return ResponseEntity.badRequest().body(Map.of("message", "Table disabled"));
 
         List<GuestOrderController.GuestOrderItem> items = Optional.ofNullable(req.products()).orElse(List.of());
-        if (items.isEmpty()) return ResponseEntity.badRequest().body(Map.of("message", "No products"));
+        if (items.isEmpty())
+            return ResponseEntity.badRequest().body(Map.of("message", "No products"));
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<OrderDetail> details = new ArrayList<>();
@@ -350,11 +367,13 @@ public class OrderServiceImpl implements OrderService {
                 .table(table)
                 .build();
 
-        for (OrderDetail d : details) d.setOrder(order);
+        for (OrderDetail d : details)
+            d.setOrder(order);
         order.setOrderDetails(details);
 
         PaymentMethod method = PaymentMethod.CASH;
-        if (req.payment_id() != null && req.payment_id() == 2) method = PaymentMethod.BANKING;
+        if (req.payment_id() != null && req.payment_id() == 2)
+            method = PaymentMethod.BANKING;
         Payment payment = Payment.builder()
                 .order(order)
                 .amount(subtotal)
@@ -369,8 +388,7 @@ public class OrderServiceImpl implements OrderService {
         return ResponseEntity.ok(Map.of("message", "OK", "data", Map.of(
                 "id", saved.getOrderId(),
                 "table_number", table.getNumber(),
-                "status", saved.getStatus()
-        )));
+                "status", saved.getStatus())));
     }
 
     private BigDecimal defaultBigDecimal(BigDecimal v) {

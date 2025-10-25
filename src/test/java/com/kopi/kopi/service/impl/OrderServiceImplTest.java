@@ -71,7 +71,7 @@ class OrderServiceImplTest {
             when(orderRepository.findByStatus(eq("PENDING"), any(Pageable.class))).thenReturn(orderPage);
 
             // === When ===
-            Map<String, Object> result = orderService.listPending("PENDING", 1, 5);
+            Map<String, Object> result = orderService.listPending("PENDING", null, 1, 5);
 
             // === Then ===
             verify(orderRepository).findByStatus("PENDING", PageRequest.of(0, 5));
@@ -107,7 +107,7 @@ class OrderServiceImplTest {
             when(orderRepository.findByStatus(eq("COMPLETED"), any(Pageable.class))).thenReturn(orderPage);
 
             // === When ===
-            Map<String, Object> result = orderService.listPending("COMPLETED", 3, 10);
+            Map<String, Object> result = orderService.listPending("COMPLETED", null, 3, 10);
 
             // === Then ===
             verify(orderRepository).findByStatus("COMPLETED", PageRequest.of(2, 10));
@@ -145,7 +145,7 @@ class OrderServiceImplTest {
             when(orderRepository.findByStatus(eq("PENDING"), any(Pageable.class))).thenReturn(orderPage);
 
             // === When ===
-            Map<String, Object> result = orderService.listPending("PENDING", 1, 5);
+            Map<String, Object> result = orderService.listPending("PENDING", null, 1, 5);
 
             // === Then ===
             verify(orderRepository).findByStatus("PENDING", PageRequest.of(0, 5));
@@ -201,7 +201,7 @@ class OrderServiceImplTest {
                     .thenReturn(orderPage);
 
             // === When ===
-            Map<String, Object> result = orderService.getUserTransactions(testUser, 1, 10);
+            Map<String, Object> result = orderService.getUserTransactions(testUser.getUserId(), 1, 10);
 
             // === Then ===
             verify(orderRepository).findByCustomer_UserId(eq(101), eq(PageRequest.of(0, 10)));
@@ -244,7 +244,7 @@ class OrderServiceImplTest {
                     .thenReturn(orderPage);
 
             // === When ===
-            Map<String, Object> result = orderService.getUserTransactions(testUser, 1, 10);
+            Map<String, Object> result = orderService.getUserTransactions(testUser.getUserId(), 1, 10);
 
             // === Then ===
             List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
@@ -259,7 +259,7 @@ class OrderServiceImplTest {
         void should_ThrowNullPointerException_When_PageIsNull() {
             // === When & Then ===
             assertThrows(NullPointerException.class, () -> {
-                orderService.getUserTransactions(testUser, null, 10);
+                orderService.getUserTransactions(testUser.getUserId(), null, 10);
             });
         }
 
@@ -278,7 +278,7 @@ class OrderServiceImplTest {
                     .thenReturn(orderPage);
 
             // === When ===
-            Map<String, Object> result = orderService.getUserTransactions(testUser, 1, 10);
+            Map<String, Object> result = orderService.getUserTransactions(testUser.getUserId(), 1, 10);
 
             // === Then ===
             List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
@@ -316,7 +316,7 @@ class OrderServiceImplTest {
                     .thenReturn(orderPage);
 
             // === When ===
-            Map<String, Object> result = orderService.getUserTransactions(testUser, page, limit);
+            Map<String, Object> result = orderService.getUserTransactions(testUser.getUserId(), page, limit);
 
             // === Then ===
             verify(orderRepository).findByCustomer_UserId(eq(101), eq(PageRequest.of(2, 10)));

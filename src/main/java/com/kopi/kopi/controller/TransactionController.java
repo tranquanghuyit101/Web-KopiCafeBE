@@ -23,8 +23,7 @@ public class TransactionController {
     @GetMapping("/userPanel/transactions")
     public Map<String, Object> getUserTransactions(
             @RequestParam(name = "page", required = false, defaultValue = "1") Integer page,
-            @RequestParam(name = "limit", required = false, defaultValue = "9") Integer limit
-    ) {
+            @RequestParam(name = "limit", required = false, defaultValue = "9") Integer limit) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
         return orderService.getUserTransactions(userId, page, limit);
@@ -42,16 +41,14 @@ public class TransactionController {
             @RequestParam(name = "status", required = false, defaultValue = "PENDING") String status,
             @RequestParam(name = "type", required = false, defaultValue = "ALL") String type,
             @RequestParam(name = "page", required = false, defaultValue = "1") Integer page,
-            @RequestParam(name = "limit", required = false, defaultValue = "20") Integer limit
-    ) {
+            @RequestParam(name = "limit", required = false, defaultValue = "20") Integer limit) {
         return orderService.listPending(status, type, page, limit);
     }
 
     @PatchMapping("/transactions/{id}/status")
     public ResponseEntity<?> changeStatus(
             @PathVariable("id") Integer id,
-            @RequestBody Map<String, Object> payload
-    ) {
+            @RequestBody Map<String, Object> payload) {
         return orderService.changeStatus(id, payload);
     }
 
@@ -66,5 +63,3 @@ public class TransactionController {
         return v != null ? v : BigDecimal.ZERO;
     }
 }
-
-
