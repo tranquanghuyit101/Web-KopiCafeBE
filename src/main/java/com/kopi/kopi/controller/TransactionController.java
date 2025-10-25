@@ -7,6 +7,7 @@ import com.kopi.kopi.repository.AddressRepository;
 import com.kopi.kopi.repository.OrderRepository;
 import com.kopi.kopi.repository.ProductRepository;
 import com.kopi.kopi.repository.UserRepository;
+import com.kopi.kopi.service.TableService;
 import com.kopi.kopi.security.UserPrincipal;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -26,12 +27,14 @@ public class TransactionController {
     private final ProductRepository productRepository;
     private final AddressRepository addressRepository;
     private final UserRepository userRepository;
+    private final TableService tableService;
 
-    public TransactionController(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository) {
+    public TransactionController(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
         this.userRepository = userRepository;
+        this.tableService = tableService;
     }
 
     @GetMapping("/userPanel/transactions")
@@ -134,11 +137,19 @@ public class TransactionController {
     @GetMapping("/transactions")
     public Map<String, Object> listPending(
             @RequestParam(name = "status", required = false, defaultValue = "PENDING") String status,
+            @RequestParam(name = "type", required = false, defaultValue = "ALL") String type,
             @RequestParam(name = "page", required = false, defaultValue = "1") Integer page,
             @RequestParam(name = "limit", required = false, defaultValue = "20") Integer limit
     ) {
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), Math.max(limit, 1));
-        Page<OrderEntity> pageData = orderRepository.findByStatus(status, pageable);
+        Page<OrderEntity> pageData;
+        if ("TABLE".equalsIgnoreCase(type)) {
+            pageData = orderRepository.findByStatusAndTableIsNotNull(status, pageable);
+        } else if ("SHIPPING".equalsIgnoreCase(type)) {
+            pageData = orderRepository.findByStatusAndAddressIsNotNull(status, pageable);
+        } else {
+            pageData = orderRepository.findByStatus(status, pageable);
+        }
 
         List<Map<String, Object>> items = new ArrayList<>();
         for (OrderEntity o : pageData.getContent()) {
@@ -147,6 +158,7 @@ public class TransactionController {
             m.put("status", o.getStatus());
             m.put("address", o.getAddress() != null ? o.getAddress().getAddressLine() : null);
             m.put("created_at", o.getCreatedAt());
+            m.put("table_number", o.getTable() != null ? o.getTable().getNumber() : null);
             m.put("total", defaultBigDecimal(o.getTotalAmount()));
 
             List<Map<String, Object>> products = new ArrayList<>();
@@ -195,6 +207,9 @@ public class TransactionController {
             }
         }
         orderRepository.save(order);
+        if (order.getTable() != null) {
+            tableService.setAvailableIfNoPendingOrders(order.getTable().getTableId());
+        }
         return ResponseEntity.ok(Map.of("message", "OK"));
     }
 
