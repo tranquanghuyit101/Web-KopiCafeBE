@@ -27,23 +27,22 @@ public class CleanupScheduler {
     }
 
     /**
-     *  Chạy mỗi 30s: dọn OTP đã hết hạn.
+     *  Chạy mỗi 300s: dọn OTP đã hết hạn.
      */
     @Transactional
-    @Scheduled(fixedDelayString = "${app.auth.cleanup.otp.fixed-delay-ms:30000}")
+    @Scheduled(fixedDelayString = "${app.auth.cleanup.otp.fixed-delay-ms:300000}")
     public void cleanupExpiredOtps() {
         LocalDateTime now = LocalDateTime.now();
         otpRepo.deleteByExpiresAtBefore(now);
         // có thể log nếu cần
         // System.out.println("Deleted expired OTPs: " + deleted);
     }
-
     /**
-     *  Chạy mỗi 60s: xoá user chưa verify quá hạn (email_verified=false &
+     *  Chạy mỗi 300000s cho chất: xoá user chưa verify quá hạn (email_verified=false &
      * created_at < now - duration).
      */
     @Transactional
-    @Scheduled(fixedDelayString = "${app.auth.cleanup.unverified.fixed-delay-ms:60000}")
+    @Scheduled(fixedDelayString = "${app.auth.cleanup.unverified.fixed-delay-ms:300000000}")
     public void cleanupUnverifiedUsers() {
         LocalDateTime threshold = LocalDateTime.now().minus(unverifiedLifetime);
         userRepo.deleteByEmailVerifiedIsFalseAndCreatedAtBefore(threshold);
