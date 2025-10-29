@@ -55,7 +55,6 @@ public class DataInit {
                 categoryRepository.saveAll(List.of(
                         new Category("Coffee", true, 1),
                         new Category("Milk Tea", true, 2),
-                        new Category("Smoothies", true, 3),
                         new Category("Juice", true, 4),
                         new Category("Ice Blended", true, 5),
                         new Category("Yogurt", true, 6),
@@ -77,7 +76,6 @@ public class DataInit {
                     String prefix = switch (cat.getName()) {
                         case "Coffee" -> "CF";
                         case "Milk Tea" -> "MT";
-                        case "Smoothies" -> "SM";
                         case "Juice" -> "JC";
                         case "Ice Blended" -> "IB";
                         case "Yogurt" -> "YG";
