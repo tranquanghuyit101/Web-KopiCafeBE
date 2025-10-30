@@ -5,6 +5,7 @@ import com.kopi.kopi.entity.Address;
 import com.kopi.kopi.entity.User;
 import com.kopi.kopi.entity.UserAddress;
 import com.kopi.kopi.repository.UserAddressRepository;
+import com.kopi.kopi.repository.AddressRepository;
 import com.kopi.kopi.repository.UserRepository;
 import com.kopi.kopi.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class ProfileController {
 
     private final UserRepository userRepository;
     private final UserAddressRepository userAddressRepository;
+    private final AddressRepository addressRepository;
     private final PasswordEncoder passwordEncoder;
 
     @GetMapping
@@ -58,6 +60,8 @@ public class ProfileController {
                 .address(addressStr)             // ✅ trả về cho FE
                 .role(u.getRole() != null ? u.getRole().getName() : null)
                 .status(u.getStatus() != null ? u.getStatus().name() : null)
+                .positionId(u.getPosition() != null ? u.getPosition().getPositionId() : null)
+                .positionName(u.getPosition() != null ? u.getPosition().getPositionName() : null)
                 .createdAt(u.getCreatedAt())
                 .updatedAt(u.getUpdatedAt())
                 .build();
@@ -110,6 +114,46 @@ public class ProfileController {
         u.setUpdatedAt(LocalDateTime.now());
         userRepository.save(u);
         return ResponseEntity.noContent().build();
+    }
+
+    public record AddressPayload(String address_line, String ward, String district, String city, Double latitude, Double longitude) {}
+
+    @PostMapping("/address")
+    public ResponseEntity<?> saveDefaultAddress(@RequestBody AddressPayload payload) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        User u = ((UserPrincipal) auth.getPrincipal()).getUser();
+
+        // turn off existing default addresses
+        List<UserAddress> existing = userAddressRepository.findAllWithAddressByUserId(u.getUserId());
+        if (existing != null) {
+            for (UserAddress ua : existing) {
+                if (Boolean.TRUE.equals(ua.getDefaultAddress())) {
+                    ua.setDefaultAddress(false);
+                    userAddressRepository.save(ua);
+                }
+            }
+        }
+
+        Address a = Address.builder()
+                .addressLine(payload.address_line())
+                .ward(payload.ward())
+                .district(payload.district())
+                .city(payload.city())
+                .latitude(payload.latitude())
+                .longitude(payload.longitude())
+                .createdAt(java.time.LocalDateTime.now())
+                .build();
+        a = addressRepository.save(a);
+
+        UserAddress ua = UserAddress.builder()
+                .user(u)
+                .address(a)
+                .defaultAddress(true)
+                .createdAt(java.time.LocalDateTime.now())
+                .build();
+        userAddressRepository.save(ua);
+
+        return ResponseEntity.ok().build();
     }
 
     private void append(StringBuilder sb, String part) {

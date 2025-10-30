@@ -17,14 +17,21 @@ import com.kopi.kopi.repository.ProductRepository;
 import com.kopi.kopi.repository.OrderRepository;
 import com.kopi.kopi.entity.OrderEntity;
 import com.kopi.kopi.entity.OrderDetail;
+import com.kopi.kopi.entity.DiningTable;
+import com.kopi.kopi.repository.DiningTableRepository;
+import com.kopi.kopi.entity.Position;
+import com.kopi.kopi.repository.PositionRepository;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 @Configuration
 public class DataInit {
 	@Bean
-	CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository) {
+    CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository, DiningTableRepository diningTableRepository, PositionRepository positionRepository) {
 		return args -> {
 			// Seed roles
 			if (roleRepository.count() == 0) {
@@ -115,9 +122,35 @@ public class DataInit {
 				productRepository.save(p4);
 			}
 
-			// Seed users
-			if (userRepository.count() < 3) {
+            // Seed dining tables (exact values, including timestamps and QR tokens)
+            if (diningTableRepository.count() == 0) {
+                LocalDateTime t614 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 614_000_000);
+                LocalDateTime t616 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 616_000_000);
+                LocalDateTime t617 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 617_000_000);
+                LocalDateTime t618 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 618_000_000);
+
+                DiningTable[] tables = new DiningTable[] {
+                    DiningTable.builder().number(1).name("Table 1").status("AVAILABLE").qrToken("CFA6F97D-316D-4742-AE6D-C62DD0238D30").createdAt(t614).updatedAt(t614).build(),
+                    DiningTable.builder().number(2).name("Table 2").status("AVAILABLE").qrToken("F368DB66-6C0B-4BB5-B458-880BFB75E1EE").createdAt(t616).updatedAt(t616).build(),
+                    DiningTable.builder().number(3).name("Table 3").status("AVAILABLE").qrToken("E9DBA1ED-C2DF-4F43-A932-E68D90C2A917").createdAt(t616).updatedAt(t616).build(),
+                    DiningTable.builder().number(4).name("Table 4").status("AVAILABLE").qrToken("B2A5DD86-636C-4999-BBFE-2E96CD55EDF8").createdAt(t617).updatedAt(t617).build(),
+                    DiningTable.builder().number(5).name("Table 5").status("AVAILABLE").qrToken("0394CD5F-3CD9-4895-9A03-9F7B0D392958").createdAt(t617).updatedAt(t617).build(),
+                    DiningTable.builder().number(6).name("Table 6").status("AVAILABLE").qrToken("BDB7459C-439C-4B65-B896-498AAD23B863").createdAt(t617).updatedAt(t617).build(),
+                    DiningTable.builder().number(7).name("Table 7").status("AVAILABLE").qrToken("E8DA5212-3819-4052-A482-1C0A00927064").createdAt(t617).updatedAt(t617).build(),
+                    DiningTable.builder().number(8).name("Table 8").status("AVAILABLE").qrToken("1CAE8792-B367-410D-863B-DE2CC5E4786C").createdAt(t617).updatedAt(t617).build(),
+                    DiningTable.builder().number(9).name("Table 9").status("AVAILABLE").qrToken("07D05AD5-626E-438B-A3CA-3AA0D4716190").createdAt(t618).updatedAt(t618).build(),
+                    DiningTable.builder().number(10).name("Table 10").status("AVAILABLE").qrToken("1F1D8D9F-3124-428E-BDB4-1FC44206509E").createdAt(t618).updatedAt(t618).build(),
+                };
+                diningTableRepository.saveAll(Arrays.asList(tables));
+            }
+
+            // Seed users
+			if (userRepository.count() < 4) {
                 LocalDateTime now = LocalDateTime.now();
+
+				// Fetch positions for staff (by id: 1 = Cashier, 4 = Shipper)
+				Position cashierPos = positionRepository.findById(1).orElse(null);
+				Position shipperPos = positionRepository.findById(4).orElse(null);
 
 				// Seed admin user
 				Role adminRole = roleRepository.findByName("ADMIN").orElseThrow();
@@ -129,11 +162,12 @@ public class DataInit {
 				admin.setPasswordHash(passwordEncoder.encode("admin123"));
 				admin.setRole(adminRole);
 				admin.setStatus(UserStatus.ACTIVE);
+				admin.setEmailVerified(true);
 				admin.setCreatedAt(now);
 				admin.setUpdatedAt(now);
 				userRepository.save(admin);
 
-				// Seed staff user
+				// // Seed staff user
 				Role staffRole = roleRepository.findByName("STAFF").orElseThrow();
 				User staff = new User();
 				staff.setUsername("staff");
@@ -143,9 +177,26 @@ public class DataInit {
 				staff.setPasswordHash(passwordEncoder.encode("staff123"));
 				staff.setRole(staffRole);
 				staff.setStatus(UserStatus.ACTIVE);
+				staff.setEmailVerified(true);
+				staff.setPosition(cashierPos);
 				staff.setCreatedAt(now);
 				staff.setUpdatedAt(now);
 				userRepository.save(staff);
+
+				// Seed staff2 user
+				User staff2 = new User();
+				staff2.setUsername("staff2");
+				staff2.setEmail("staff2@example.com");
+				staff2.setPhone("0000000003");
+				staff2.setFullName("Shipper Nguyễn Ngọc Khôi");
+				staff2.setPasswordHash(passwordEncoder.encode("staff123"));
+				staff2.setRole(staffRole);
+				staff2.setStatus(UserStatus.ACTIVE);
+				staff2.setEmailVerified(true);
+				staff2.setPosition(shipperPos);
+				staff2.setCreatedAt(now);
+				staff2.setUpdatedAt(now);
+				userRepository.save(staff2);
 
 				// Seed customer user
 				Role customerRole = roleRepository.findByName("CUSTOMER").orElseThrow();
@@ -157,17 +208,48 @@ public class DataInit {
 				customer.setPasswordHash(passwordEncoder.encode("customer123"));
 				customer.setRole(customerRole);
 				customer.setStatus(UserStatus.ACTIVE);
+				customer.setEmailVerified(true);
 				customer.setCreatedAt(now);
 				customer.setUpdatedAt(now);
 				userRepository.save(customer);
 			}
+			
+            // Seed positions
+            if (positionRepository.count() == 0) {
+                LocalDateTime now = LocalDateTime.now();
+                Position cashier = Position.builder()
+                        .positionName("Cashier")
+                        .description("Nhân viên thu ngân")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+                Position waiter = Position.builder()
+                        .positionName("Waiter")
+                        .description("Nhân viên phục vụ")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+                Position barista = Position.builder()
+                        .positionName("Barista")
+                        .description("Nhân viên pha chế")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+				Position shipper = Position.builder()
+                        .positionName("Shipper")
+                        .description("Nhân viên giao hàng")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+                positionRepository.saveAll(Arrays.asList(cashier, waiter, barista, shipper));
+            }
 
-			// Seed sample completed orders for the seeded customer
+            // Seed sample completed orders for the seeded customer
 			if (orderRepository.count() == 0) {
 				LocalDateTime now = LocalDateTime.now();
 				User customer = userRepository.findByUsername("customer").orElseGet(() -> userRepository.findById(3).orElse(null));
 				if (customer != null) {
-					java.util.List<Product> products = productRepository.findAll();
+                    List<Product> products = productRepository.findAll();
 					int max = Math.min(3, products.size());
 					for (int i = 0; i < max; i++) {
 						Product prod = products.get(i);
@@ -188,7 +270,7 @@ public class DataInit {
 						detail.setUnitPrice(prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO);
 						detail.setQuantity(1);
 
-						java.util.List<OrderDetail> details = new java.util.ArrayList<>();
+                        List<OrderDetail> details = new ArrayList<>();
 						details.add(detail);
 						order.setOrderDetails(details);
 

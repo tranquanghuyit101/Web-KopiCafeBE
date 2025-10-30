@@ -23,17 +23,19 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final AddressRepository addressRepository;
+    private final UserAddressRepository userAddressRepository;
     private final UserRepository userRepository;
     private final TableService tableService;
     private final DiningTableRepository diningTableRepository;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository) {
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
         this.userRepository = userRepository;
         this.tableService = tableService;
         this.diningTableRepository = diningTableRepository;
+        this.userAddressRepository = userAddressRepository;
     }
 
     @Override
@@ -131,7 +133,8 @@ public class OrderServiceImpl implements OrderService {
         if ("TABLE".equalsIgnoreCase(type)) {
             pageData = orderRepository.findByStatusAndTableIsNotNull(status, pageable);
         } else if ("SHIPPING".equalsIgnoreCase(type)) {
-            pageData = orderRepository.findByStatusAndAddressIsNotNull(status, pageable);
+            // Show orders with address and status NOT IN (CANCELLED, REJECTED, COMPLETED)
+            pageData = orderRepository.findByStatusNotInAndAddressIsNotNull(List.of("CANCELLED", "REJECTED", "COMPLETED"), pageable);
         } else {
             pageData = orderRepository.findByStatus(status, pageable);
         }
@@ -145,6 +148,7 @@ public class OrderServiceImpl implements OrderService {
             m.put("created_at", o.getCreatedAt());
             m.put("table_number", o.getTable() != null ? o.getTable().getNumber() : null);
             m.put("total", defaultBigDecimal(o.getTotalAmount()));
+            m.put("shipper_id", o.getShipper() != null ? o.getShipper().getUserId() : null);
 
             List<Map<String, Object>> products = new ArrayList<>();
             if (o.getOrderDetails() != null) {
@@ -172,7 +176,14 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public ResponseEntity<?> changeStatus(Integer id, Map<String, Object> payload) {
         String status = String.valueOf(payload.getOrDefault("status", ""));
-        if (!Objects.equals(status, "COMPLETED") && !Objects.equals(status, "CANCELLED") && !Objects.equals(status, "PENDING")) {
+        if (!Objects.equals(status, "COMPLETED") &&
+                !Objects.equals(status, "CANCELLED") &&
+                !Objects.equals(status, "PENDING") &&
+                !Objects.equals(status, "ACCEPTED") &&
+                !Objects.equals(status, "REJECTED") &&
+                !Objects.equals(status, "READY") &&
+                !Objects.equals(status, "SHIPPING") &&
+                !Objects.equals(status, "PAID")) {
             return ResponseEntity.badRequest().body(Map.of("message", "Invalid status"));
         }
         OrderEntity order = orderRepository.findById(id).orElseThrow();
@@ -187,6 +198,8 @@ public class OrderServiceImpl implements OrderService {
                 payment.setStatus(PaymentStatus.CANCELLED);
             } else if (Objects.equals(status, "PENDING")) {
                 payment.setStatus(PaymentStatus.PENDING);
+            } else if (Objects.equals(status, "PAID")) {
+                payment.setStatus(PaymentStatus.PAID);
             }
         }
         orderRepository.save(order);
@@ -238,17 +251,11 @@ public class OrderServiceImpl implements OrderService {
             // Customer placing order: customer = current user, created_by = current user, address optional
             customer = userRepository.findById(userId).orElse(null);
             if (addressText != null && !addressText.isBlank()) {
-                addr = Address.builder()
-                        .addressLine(addressText)
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                addr = addressRepository.save(addr);
-            }
-        } else if (roleId != null && roleId == 2) {
-            // Staff placing order: if customer_id is provided, attach customer; if null, keep null; address must be null when customer is null
-            if (customerIdFromBody != null) {
-                customer = userRepository.findById(customerIdFromBody).orElse(null);
-                if (addressText != null && !addressText.isBlank()) {
+                // Reuse user's default address if present (to avoid duplicate address rows), else create a new one
+                List<UserAddress> saved = userAddressRepository.findAllWithAddressByUserId(userId);
+                if (saved != null && !saved.isEmpty() && saved.get(0).getAddress() != null) {
+                    addr = saved.get(0).getAddress();
+                } else {
                     addr = Address.builder()
                             .addressLine(addressText)
                             .createdAt(LocalDateTime.now())
@@ -256,15 +263,38 @@ public class OrderServiceImpl implements OrderService {
                     addr = addressRepository.save(addr);
                 }
             }
+        } else if (roleId != null && roleId == 2) {
+            // Staff placing order: if customer_id is provided, attach customer; if null, keep null; address must be null when customer is null
+            if (customerIdFromBody != null) {
+                customer = userRepository.findById(customerIdFromBody).orElse(null);
+                if (addressText != null && !addressText.isBlank()) {
+                    // Reuse customer's default address if present, else create
+                    List<UserAddress> saved = userAddressRepository.findAllWithAddressByUserId(customerIdFromBody);
+                    if (saved != null && !saved.isEmpty() && saved.get(0).getAddress() != null) {
+                        addr = saved.get(0).getAddress();
+                    } else {
+                        addr = Address.builder()
+                                .addressLine(addressText)
+                                .createdAt(LocalDateTime.now())
+                                .build();
+                        addr = addressRepository.save(addr);
+                    }
+                }
+            }
         } else {
             // Fallback: treat like customer, but keep safe
             customer = userRepository.findById(userId).orElse(null);
             if (addressText != null && !addressText.isBlank()) {
-                addr = Address.builder()
-                        .addressLine(addressText)
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                addr = addressRepository.save(addr);
+                List<UserAddress> saved = userAddressRepository.findAllWithAddressByUserId(userId);
+                if (saved != null && !saved.isEmpty() && saved.get(0).getAddress() != null) {
+                    addr = saved.get(0).getAddress();
+                } else {
+                    addr = Address.builder()
+                            .addressLine(addressText)
+                            .createdAt(LocalDateTime.now())
+                            .build();
+                    addr = addressRepository.save(addr);
+                }
             }
         }
 

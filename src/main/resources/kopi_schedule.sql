@@ -40,6 +40,8 @@ CREATE TABLE dbo.addresses (
     ward            NVARCHAR(100)  NULL,
     district        NVARCHAR(100)  NULL,
     city            NVARCHAR(100)  NULL,
+    latitude        DECIMAL(10,6)  NULL,
+    longitude       DECIMAL(10,6)  NULL,
     created_at      DATETIME2(3)   NOT NULL
 );
 
@@ -80,7 +82,9 @@ CREATE TABLE dbo.orders (
     order_code         NVARCHAR(30)  NOT NULL,
     customer_id        INT        NULL,
     address_id         INT        NULL,
+    table_id           INT        NULL,
     created_by_user_id INT        NULL,
+    shipper_user_id    INT        NULL,
     status             NVARCHAR(20)  NOT NULL,
     close_reason       NVARCHAR(500) NULL,
     subtotal_amount    DECIMAL(18,2) NOT NULL,
@@ -114,6 +118,17 @@ CREATE TABLE dbo.payments (
     txn_ref      NVARCHAR(100) NULL,
     paid_at      DATETIME2(3)  NULL,
     created_at   DATETIME2(3)  NOT NULL
+);
+
+-- TABLES
+CREATE TABLE dbo.tables (
+    table_id INT IDENTITY(1,1) NOT NULL,
+    number INT NOT NULL,
+    name NVARCHAR(100) NULL,
+    status NVARCHAR(20) NOT NULL,
+    qr_token NVARCHAR(64) NOT NULL,
+    created_at DATETIME2(3) NOT NULL,
+    updated_at DATETIME2(3) NOT NULL
 );
 
  -- Removed: legacy dbo.schedules (superseded by work_schedules/shift/employee_shifts)
@@ -271,6 +286,7 @@ ALTER TABLE dbo.products         ADD CONSTRAINT PK_products PRIMARY KEY (product
 ALTER TABLE dbo.orders           ADD CONSTRAINT PK_orders PRIMARY KEY (order_id);
 ALTER TABLE dbo.order_details    ADD CONSTRAINT PK_order_details PRIMARY KEY (order_detail_id);
 ALTER TABLE dbo.payments         ADD CONSTRAINT PK_payments PRIMARY KEY (payment_id);
+ALTER TABLE dbo.tables           ADD CONSTRAINT PK_tables PRIMARY KEY (table_id);
  -- Removed PK for dbo.schedules
 ALTER TABLE dbo.inventory_items  ADD CONSTRAINT PK_inventory_items PRIMARY KEY (inventory_item_id);
 ALTER TABLE dbo.inventory_log    ADD CONSTRAINT PK_inventory_log PRIMARY KEY (inventory_log_id);
@@ -298,7 +314,11 @@ ALTER TABLE dbo.products
 ALTER TABLE dbo.orders
     ADD CONSTRAINT FK_orders_customer FOREIGN KEY (customer_id) REFERENCES dbo.users(user_id),
         CONSTRAINT FK_orders_address FOREIGN KEY (address_id) REFERENCES dbo.addresses(address_id),
-        CONSTRAINT FK_orders_created_by FOREIGN KEY (created_by_user_id) REFERENCES dbo.users(user_id);
+        CONSTRAINT FK_orders_created_by FOREIGN KEY (created_by_user_id) REFERENCES dbo.users(user_id),
+        CONSTRAINT FK_orders_shipper_user FOREIGN KEY (shipper_user_id) REFERENCES dbo.users(user_id);
+
+ALTER TABLE dbo.orders
+    ADD CONSTRAINT FK_orders_tables_table_id FOREIGN KEY (table_id) REFERENCES dbo.tables(table_id);
 
 ALTER TABLE dbo.order_details
     ADD CONSTRAINT FK_order_details_order FOREIGN KEY (order_id) REFERENCES dbo.orders(order_id) ON DELETE CASCADE,
@@ -466,6 +486,11 @@ ALTER TABLE dbo.payments
     ADD CONSTRAINT DF_payments_status DEFAULT (N'pending') FOR status,
         CONSTRAINT DF_payments_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
 
+ALTER TABLE dbo.tables
+    ADD CONSTRAINT DF_tables_status DEFAULT (N'AVAILABLE') FOR status,
+        CONSTRAINT DF_tables_created_at DEFAULT SYSUTCDATETIME() FOR created_at,
+        CONSTRAINT DF_tables_updated_at DEFAULT SYSUTCDATETIME() FOR updated_at;
+
  -- Removed DEFAULT constraints for dbo.schedules
 
 ALTER TABLE dbo.inventory_items
@@ -516,6 +541,10 @@ CREATE INDEX IX_users_position_id ON dbo.users(position_id);
 -- ROLES
 CREATE UNIQUE INDEX UX_roles_name ON dbo.roles(name);
 
+-- TABLES
+CREATE UNIQUE INDEX UX_tables_number ON dbo.tables(number);
+CREATE UNIQUE INDEX UX_tables_qr_token ON dbo.tables(qr_token);
+
 -- ADDRESSES <-> USERS
 CREATE UNIQUE INDEX UX_user_addresses_user_address ON dbo.user_addresses(user_id, address_id);
 CREATE INDEX IX_user_addresses_user ON dbo.user_addresses(user_id);
@@ -539,6 +568,8 @@ CREATE UNIQUE INDEX UX_orders_order_code ON dbo.orders(order_code);
 CREATE INDEX IX_orders_status_created_at ON dbo.orders(status, created_at DESC);
 CREATE INDEX IX_orders_customer ON dbo.orders(customer_id);
 CREATE INDEX IX_orders_created_by ON dbo.orders(created_by_user_id);
+CREATE INDEX IX_orders_table_id ON dbo.orders(table_id);
+CREATE INDEX IX_orders_shipper_user_id ON dbo.orders(shipper_user_id);
 
 -- ORDER DETAILS
 CREATE INDEX IX_order_details_order ON dbo.order_details(order_id);
