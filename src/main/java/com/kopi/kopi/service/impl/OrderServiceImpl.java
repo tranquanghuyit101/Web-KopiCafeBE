@@ -13,7 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.data.domain.Sort;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -40,7 +40,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public Map<String, Object> getUserTransactions(Integer userId, Integer page, Integer limit) {
-        Pageable pageable = PageRequest.of(Math.max(page - 1, 0), Math.max(limit, 1));
+        Pageable pageable = PageRequest.of(Math.max(page - 1, 0), Math.max(limit, 1), Sort.by("createdAt").descending());
         Page<OrderEntity> pageData = orderRepository.findByCustomer_UserId(userId, pageable);
 
         List<Map<String, Object>> items = new ArrayList<>();
@@ -49,6 +49,7 @@ public class OrderServiceImpl implements OrderService {
             m.put("id", o.getOrderId());
             m.put("grand_total", defaultBigDecimal(o.getTotalAmount()));
             m.put("status_name", o.getStatus());
+            m.put("created_at", o.getCreatedAt());
 
             List<Map<String, Object>> products = new ArrayList<>();
             if (o.getOrderDetails() != null && !o.getOrderDetails().isEmpty()) {
