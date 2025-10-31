@@ -42,14 +42,15 @@ public class ShippingServiceImpl implements ShippingService {
 
     @Override
     public ResponseEntity<?> getLocation(Integer orderId, String roleName, Integer userId) {
-        // If customer, ensure the order belongs to them (when possible)
-        if ("ROLE_CUSTOMER".equals(roleName)) {
-            Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
-            if (orderOpt.isEmpty()) return ResponseEntity.status(404).body(Map.of("message", "Order not found"));
-            Integer customerId = orderOpt.get().getCustomer() != null ? orderOpt.get().getCustomer().getUserId() : null;
-            if (customerId == null || !customerId.equals(userId)) {
-                return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
-            }
+        // Allow only the customer of the order OR the assigned shipper to read location
+        Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
+        if (orderOpt.isEmpty()) return ResponseEntity.status(404).body(Map.of("message", "Order not found"));
+        OrderEntity order = orderOpt.get();
+        Integer customerId = order.getCustomer() != null ? order.getCustomer().getUserId() : null;
+        Integer shipperId = order.getShipper() != null ? order.getShipper().getUserId() : null;
+        boolean isAllowed = (customerId != null && customerId.equals(userId)) || (shipperId != null && shipperId.equals(userId));
+        if (!isAllowed) {
+            return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
         }
         ShippingLocationStore.Location loc = store.get(orderId);
         if (loc == null) return ResponseEntity.ok(Map.of("data", null));
@@ -61,11 +62,11 @@ public class ShippingServiceImpl implements ShippingService {
         Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
         if (orderOpt.isEmpty()) return ResponseEntity.status(404).body(Map.of("message", "Order not found"));
         OrderEntity o = orderOpt.get();
-        if ("ROLE_CUSTOMER".equals(roleName)) {
-            Integer customerId = o.getCustomer() != null ? o.getCustomer().getUserId() : null;
-            if (customerId == null || !customerId.equals(userId)) {
-                return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
-            }
+        Integer customerId = o.getCustomer() != null ? o.getCustomer().getUserId() : null;
+        Integer shipperId = o.getShipper() != null ? o.getShipper().getUserId() : null;
+        boolean isAllowed = (customerId != null && customerId.equals(userId)) || (shipperId != null && shipperId.equals(userId));
+        if (!isAllowed) {
+            return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
         }
         String addr = o.getAddress() != null ? o.getAddress().getAddressLine() : null;
         Double lat = o.getAddress() != null ? o.getAddress().getLatitude() : null;
