@@ -12,6 +12,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Integer> {
     Page<OrderEntity> findByStatusAndTableIsNotNull(String status, Pageable pageable);
     Page<OrderEntity> findByStatusAndAddressIsNotNull(String status, Pageable pageable);
     Page<OrderEntity> findByStatusNotInAndAddressIsNotNull(List<String> statuses, Pageable pageable);
+    Page<OrderEntity> findByStatusNotInAndAddressIsNull(List<String> statuses, Pageable pageable);
     long countByShipper_UserIdAndStatusNotIn(Integer userId, List<String> statuses);
     long countByTable_TableIdAndStatus(Integer tableId, String status);
 }
