@@ -31,6 +31,9 @@ public class Product {
 	@Column(name = "img_url", length = 255)
 	private String imgUrl;
 
+	@Column(name = "description", columnDefinition = "TEXT")
+	private String description;
+
 	@Column(name = "sku", length = 50)
 	private String sku;
 
@@ -38,7 +41,7 @@ public class Product {
 	private BigDecimal price;
 
 	@Column(name = "is_available", nullable = false)
-	private Boolean available;
+	private Boolean available = true;
 
 	@Column(name = "stock_qty", nullable = false)
 	private Integer stockQty;
@@ -60,4 +63,19 @@ public class Product {
 	@EqualsAndHashCode.Exclude
 	@Builder.Default
 	private List<DiscountEventProduct> discountEventProducts = new ArrayList<>();
+
+    // Gán giá trị mặc định trước khi INSERT
+    @PrePersist
+    protected void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        if (createdAt == null) createdAt = now;
+        if (updatedAt == null) updatedAt = now;
+        if (available == null) available = true;
+        if (stockQty == null) stockQty = 0;
+    }
+    // Tự động cập nhật updatedAt khi UPDATE
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 } 
