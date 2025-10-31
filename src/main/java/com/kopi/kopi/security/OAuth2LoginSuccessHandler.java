@@ -61,6 +61,7 @@ public class OAuth2LoginSuccessHandler implements org.springframework.security.w
             u.setCreatedAt(LocalDateTime.now());
             u.setUpdatedAt(LocalDateTime.now());
             u.setLastLoginAt(null);
+            u.setEmailVerified(true);
             u.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
 
 

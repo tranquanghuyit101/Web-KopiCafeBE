@@ -26,6 +26,7 @@ import com.kopi.kopi.security.JwtTokenProvider;
 import com.kopi.kopi.service.IUserService;
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 
 import java.util.Map;
@@ -47,16 +48,19 @@ public class AuthController {
     // ADD
     private final IUserService userService;
     private final IAuthService authService;
+    private final com.kopi.kopi.repository.UserRepository userRepository;
 
     // THÊM userService vào constructor (không xoá tham số cũ)
     public AuthController(AuthenticationManager authenticationManager,
                           JwtTokenProvider jwtTokenProvider,
                           IUserService userService,
-                          IAuthService authService) { // ADD
+                          IAuthService authService,
+                          com.kopi.kopi.repository.UserRepository userRepository) { // ADD
         this.authenticationManager = authenticationManager;
         this.jwtTokenProvider = jwtTokenProvider;
         this.userService = userService; // ADD
         this.authService = authService; //
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/login")
@@ -68,6 +72,10 @@ public class AuthController {
 
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
             User user = principal.getUser();
+
+            // Update last login time for email/password login
+            user.setLastLoginAt(LocalDateTime.now());
+            userRepository.save(user);
             int roleNumber = principal.getUser().getRole() != null && principal.getUser().getRole().getRoleId() != null
                     ? principal.getUser().getRole().getRoleId()
                     : 1;

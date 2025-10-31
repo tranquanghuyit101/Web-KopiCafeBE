@@ -121,11 +121,14 @@ public class ProfileServiceImpl implements ProfileService {
             }
         }
 
+        String inferredCity = extractCityFromAddressLine(payload.address_line());
+        String cityToUse = isBlank(inferredCity) ? (isBlank(payload.city()) ? null : payload.city().trim()) : inferredCity;
+
         Address a = Address.builder()
                 .addressLine(payload.address_line())
                 .ward(payload.ward())
                 .district(payload.district())
-                .city(payload.city())
+                .city(cityToUse)
                 .latitude(payload.latitude())
                 .longitude(payload.longitude())
                 .createdAt(LocalDateTime.now())
@@ -141,6 +144,115 @@ public class ProfileServiceImpl implements ProfileService {
         userAddressRepository.save(ua);
 
         return ResponseEntity.ok().build();
+    }
+
+    @Override
+    public ResponseEntity<?> listAddresses(Integer userId) {
+        List<UserAddress> existing = userAddressRepository.findAllWithAddressByUserId(userId);
+        java.util.List<java.util.Map<String, Object>> data = new java.util.ArrayList<>();
+        for (UserAddress ua : existing) {
+            Address a = ua.getAddress();
+            java.util.Map<String, Object> m = new java.util.HashMap<>();
+            m.put("user_address_id", ua.getUserAddressId());
+            m.put("is_default", Boolean.TRUE.equals(ua.getDefaultAddress()));
+            if (a != null) {
+                m.put("address_id", a.getAddressId());
+                m.put("address_line", a.getAddressLine());
+                m.put("ward", a.getWard());
+                m.put("district", a.getDistrict());
+                m.put("city", a.getCity());
+                m.put("latitude", a.getLatitude());
+                m.put("longitude", a.getLongitude());
+            }
+            data.add(m);
+        }
+        return ResponseEntity.ok(java.util.Map.of("data", data));
+    }
+
+    @Override
+    @Transactional
+    public ResponseEntity<?> createAddress(Integer userId, ProfileController.AddressPayload payload, boolean setDefault) {
+        User u = userRepository.findById(userId).orElseThrow();
+
+        if (setDefault) {
+            List<UserAddress> existing = userAddressRepository.findAllWithAddressByUserId(userId);
+            if (existing != null) {
+                for (UserAddress ua : existing) {
+                    if (Boolean.TRUE.equals(ua.getDefaultAddress())) {
+                        ua.setDefaultAddress(false);
+                        userAddressRepository.save(ua);
+                    }
+                }
+            }
+        }
+
+        String inferredCity = extractCityFromAddressLine(payload.address_line());
+        String cityToUse = isBlank(inferredCity) ? (isBlank(payload.city()) ? null : payload.city().trim()) : inferredCity;
+
+        Address a = Address.builder()
+                .addressLine(payload.address_line())
+                .ward(payload.ward())
+                .district(payload.district())
+                .city(cityToUse)
+                .latitude(payload.latitude())
+                .longitude(payload.longitude())
+                .createdAt(LocalDateTime.now())
+                .build();
+        a = addressRepository.save(a);
+
+        UserAddress ua = UserAddress.builder()
+                .user(u)
+                .address(a)
+                .defaultAddress(setDefault)
+                .createdAt(LocalDateTime.now())
+                .build();
+        ua = userAddressRepository.save(ua);
+
+        return ResponseEntity.ok(java.util.Map.of(
+                "user_address_id", ua.getUserAddressId(),
+                "address_id", a.getAddressId(),
+                "is_default", ua.getDefaultAddress()
+        ));
+    }
+
+    @Override
+    @Transactional
+    public ResponseEntity<?> setDefaultAddress(Integer userId, Integer userAddressId) {
+        List<UserAddress> existing = userAddressRepository.findAllWithAddressByUserId(userId);
+        if (existing != null) {
+            for (UserAddress ua : existing) {
+                boolean makeDefault = java.util.Objects.equals(ua.getUserAddressId(), userAddressId);
+                ua.setDefaultAddress(makeDefault);
+                userAddressRepository.save(ua);
+            }
+        }
+        return ResponseEntity.ok().build();
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    // Heuristic extractor: take the last non-numeric token before country from a comma-separated address line
+    private String extractCityFromAddressLine(String addressLine) {
+        if (addressLine == null) return null;
+        String[] rawParts = addressLine.split(",");
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        for (String p : rawParts) {
+            if (p != null) {
+                String t = p.trim();
+                if (!t.isEmpty()) parts.add(t);
+            }
+        }
+        for (int i = parts.size() - 1; i >= 0; i--) {
+            String token = parts.get(i);
+            String lc = token.toLowerCase();
+            if ("vietnam".equals(lc) || "việt nam".equals(lc)) continue;
+            if (token.matches("\\d{3,}")) continue; // skip postal code
+            // Prefer the token immediately before the country when present
+            return token;
+        }
+        return null;
     }
 
     private void append(StringBuilder sb, String part) {
