@@ -45,7 +45,7 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
                     .fromVideos(g.getVideos())
                     .build());
         }
-        
+
         return AiSuggestResponse.builder()
                 .items(items)
                 .model("trend-aggregation")
@@ -55,304 +55,345 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
     }
 
     // Phục vụ TrendsController: gom nhóm video theo món đồ uống
+    // LUỒNG MỚI: Gemini tìm món hot trend → YouTube search video cho từng món
     public DishTrendsResponse groupedByDish(AiSuggestionRequest req) {
         long t0 = System.currentTimeMillis();
-        int days  = Optional.ofNullable(req.getDays()).orElse(90);  
-        int max   = Math.min(Optional.ofNullable(req.getMaxResults()).orElse(50), 150);  
-        boolean shortsOnly = false;  // FORCE BỎ shortsOnly vì gây nhiễu
+        int days  = Optional.ofNullable(req.getDays()).orElse(30);
+        int max   = Math.min(Optional.ofNullable(req.getMaxResults()).orElse(100), 200);
+        boolean shortsOnly = false;
         
         System.out.println("[AiSuggest] groupedByDish called: days=" + days + ", max=" + max + ", shortsOnly=" + shortsOnly);
 
-        // 1) Queries TỔNG QUÁT - để YouTube tự gợi ý các món
-        List<VideoItem> videos = new ArrayList<>();
-        String[] queries = {
-            // Queries chung về đồ uống
-            "cách làm đồ uống", "drink recipe", "beverage recipe",
-            // Cà phê tổng quát
-            "cách pha cà phê", "coffee drink", "coffee recipe",
-            "vietnamese coffee", "iced coffee",
-            // Trà tổng quát
-            "trà sữa", "milk tea", "bubble tea",
-            "trà trái cây", "fruit tea", "tea recipe",
-            // Matcha/Chocolate
-            "matcha drink", "matcha recipe",
-            "chocolate drink", "hot chocolate",
-            // Đồ uống mùa hè
-            "smoothie recipe", "sinh tố", "juice recipe",
-            // Trending
-            "trending drink", "viral drink", "đồ uống hot trend"
-        };
+        // BƯỚC 1: Gọi Gemini để tìm các món hot trend ở Việt Nam
+        System.out.println("[AiSuggest] Step 1: Calling Gemini to find hot trend dishes in Vietnam...");
+        List<GeminiClient.TrendingDishInfo> trendingDishes;
+        try {
+            // Tăng số lượng món yêu cầu (để có nhiều lựa chọn hơn)
+            int dishCount = Math.max(10, max / 3);  // Tăng từ max/10 lên max/3, min 10 món
+            System.out.println("[AiSuggest] Requesting " + dishCount + " trending dishes from Gemini...");
+            trendingDishes = gemini.findHotTrendDishes(days, dishCount);
+            System.out.println("[AiSuggest] Gemini returned " + trendingDishes.size() + " trending dishes");
+            for (GeminiClient.TrendingDishInfo dish : trendingDishes) {
+                System.out.println("  - " + dish.getName() + " (trending score: " + dish.getTrendingScore() + ")");
+            }
+        } catch (Exception e) {
+            System.err.println("[AiSuggest] Gemini failed: " + e.getMessage() + ". Using fallback dishes...");
+            trendingDishes = gemini.getFallbackTrendingDishes(Math.max(5, max / 10));
+        }
+
+        if (trendingDishes.isEmpty()) {
+            System.err.println("[AiSuggest] No trending dishes found, returning empty result");
+            return DishTrendsResponse.builder()
+                    .data(List.of())
+                    .meta(Map.of("days", days, "max", max, "totalVideos", 0, "grouped", 0, "tookMs", System.currentTimeMillis() - t0))
+                    .build();
+        }
+
+        // BƯỚC 2: Với mỗi món, tìm video GẦN ĐÂY trên YouTube
+        System.out.println("[AiSuggest] Step 2: Searching RECENT YouTube videos for each dish...");
+        Map<String, List<VideoItem>> dishToVideos = new LinkedHashMap<>();
+        int videosPerDish = Math.max(3, max / trendingDishes.size()); // Ít nhất 3 video/món
         
-        int perQuery = Math.max(20, max / queries.length + 10);  // Tăng lên để có NHIỀU video hơn
-        
-        for (String query : queries) {
+        // Giảm xuống 60 ngày để có nhiều video hơn (90 ngày quá khắt)
+        int recentDays = Math.max(days, 60);
+        System.out.println("[AiSuggest] Will search for videos published within last " + recentDays + " days");
+
+        for (GeminiClient.TrendingDishInfo dishInfo : trendingDishes) {
+            String dishName = dishInfo.getName();
+            System.out.println("[AiSuggest] Searching videos for: " + dishName);
+            
+            // Tạo query tìm kiếm đơn giản (chỉ tên món)
+            String query = dishName;
+            
             try {
-                System.out.println("[AiSuggest] Query: " + query);
-                // Thêm regionCode=VN và relevanceLanguage=vi để ưu tiên video Việt
-                List<VideoItem> batch = yt.searchRecentVideos(
-                        query, 0, perQuery, "VN", "vi", shortsOnly, null, "moderate", false
+                // Thử tìm với region=VN và THỜI GIAN GẦN ĐÂY trước
+                List<VideoItem> videos = yt.searchRecentVideos(
+                        query, recentDays, videosPerDish, "VN", "vi", shortsOnly, null, "moderate", false
                 );
-                System.out.println("[AiSuggest]   -> Found " + batch.size() + " videos");
-                videos.addAll(batch);
+                
+                System.out.println("[AiSuggest]   -> Found " + videos.size() + " videos (VN, last " + recentDays + " days) for " + dishName);
+                
+                // Nếu không có kết quả, thử bỏ region nhưng VẪN GIỮ time filter
+                if (videos.isEmpty()) {
+                    System.out.println("[AiSuggest]   -> Retry without region but keep time filter...");
+                    videos = yt.searchRecentVideos(
+                            query, recentDays, videosPerDish, "", "", shortsOnly, null, "moderate", false
+                    );
+                    System.out.println("[AiSuggest]   -> Found " + videos.size() + " videos (global, last " + recentDays + " days) for " + dishName);
+                }
+                
+                // Nếu vẫn rỗng, thử với relevance order (nhưng vẫn giữ time)
+                if (videos.isEmpty()) {
+                    System.out.println("[AiSuggest]   -> Retry with relevance order...");
+                    videos = yt.searchVideos(
+                            query, recentDays, videosPerDish, "", "", shortsOnly, null, "moderate", false, "relevance"
+                    );
+                    System.out.println("[AiSuggest]   -> Found " + videos.size() + " videos (relevance, last " + recentDays + " days) for " + dishName);
+                }
+                
+                // CUỐI CÙNG: Nếu vẫn rỗng, thử nới lỏng time filter (120 ngày)
+                if (videos.isEmpty()) {
+                    System.out.println("[AiSuggest]   -> Last retry with extended time (120 days)...");
+                    videos = yt.searchVideos(
+                            query, 120, videosPerDish, "", "", false, null, "moderate", false, "relevance"
+                    );
+                    System.out.println("[AiSuggest]   -> Found " + videos.size() + " videos (120 days, no shorts filter) for " + dishName);
+                }
+                
+                // Lọc video không liên quan
+                videos = filterRelevantVideos(videos, dishName);
+                System.out.println("[AiSuggest]   -> After filter: " + videos.size() + " videos");
+                
+                // Tính viral score cho từng video
+                OffsetDateTime now = OffsetDateTime.now();
+                for (VideoItem v : videos) {
+                    double view = Math.max(1, Optional.ofNullable(v.getViewCount()).orElse(0L));
+                    double like = Math.max(1, Optional.ofNullable(v.getLikeCount()).orElse(0L));
+                    double base = Math.log(view) + 2.0 * Math.log(like);
+                    long hours = Math.max(1, Duration.between(
+                            Optional.ofNullable(v.getPublishedAt()).orElse(now.minusDays(days)), now
+                    ).toHours());
+                    double recency = 48.0 / hours;
+                    v.setViralScore(base + recency);
+                    
+                // Gán tên món và công thức cho video
+                v.setDishName(dishName);
+                v.setDishKey(keyOf(dishName));
+                v.setBasicRecipe(dishInfo.getBasicRecipe());
+            }
+            
+            // LUÔN thêm món, kể cả khi không có video (theo yêu cầu user)
+            dishToVideos.put(dishName, videos);
+            if (videos.isEmpty()) {
+                System.out.println("[AiSuggest]   ⚠️  Added dish '" + dishName + "' with NO videos (will show as 'Không có video cụ thể')");
+            } else {
+                System.out.println("[AiSuggest]   ✅ Added dish '" + dishName + "' with " + videos.size() + " videos");
+            }
+                
             } catch (Exception e) {
-                System.err.println("[AiSuggest] Query failed: " + query + " - " + e.getMessage());
+                System.err.println("[AiSuggest] Failed to search videos for " + dishName + ": " + e.getMessage());
             }
         }
         
-        // Deduplicate
-        Map<String, VideoItem> unique = new LinkedHashMap<>();
-        for (VideoItem v : videos) unique.put(v.getVideoId(), v);
-        videos = new ArrayList<>(unique.values());
-        
-        System.out.println("[AiSuggest] Total unique before filter: " + videos.size());
-        
-        // FILTER 1: Loại bỏ spam/memes
-        videos = videos.stream().filter(v -> {
-            String title = v.getTitle().toLowerCase();
-            boolean isSpam = 
-                title.contains("#meme") || title.contains("#animation") ||
-                title.contains("#cartoon") || title.contains("brainrot");
-            
-            if (isSpam) {
-                System.out.println("[AiSuggest] SPAM FILTERED: " + v.getTitle());
-                return false;
-            }
-            return true;
-        }).collect(java.util.stream.Collectors.toList());
-        
-        System.out.println("[AiSuggest] After spam filter: " + videos.size());
-        
-        // FILTER 2: CHỈ REJECT video CHẮC CHẮN không phải về đồ uống
-        videos = videos.stream().filter(v -> {
-            String title = v.getTitle().toLowerCase();
-            String desc = v.getDescription().toLowerCase();
-            
-            // REJECT CHẮC CHẮN không phải recipe: sản phẩm/dụng cụ/review thiết bị
-            boolean shouldReject = 
-                // Sản phẩm vật lý
-                title.contains("khay") && !title.contains("cách") ||
-                title.contains("ly nhựa") || title.contains("cốc nhựa") ||
-                title.contains("quầy bar") || title.contains("kệ trưng bày") ||
-                title.contains("gấu bông") || title.contains("đồ chơi") ||
-                // Shop/Quán (không phải recipe)
-                title.contains("shop") && !title.contains("recipe") ||
-                title.contains("store") && !title.contains("how") ||
-                title.contains("menu giá") || title.contains("bảng giá") ||
-                // Thiết bị
-                title.contains("máy pha") && !title.contains("cách") ||
-                title.contains("máy xay") && !title.contains("dùng") ||
-                title.contains("thiết bị");
-            
-            if (shouldReject) {
-                System.out.println("[AiSuggest] REJECTED (product/shop): " + v.getTitle());
-                return false;
-            }
-            
-            // GIỮ LẠI tất cả video còn lại (giả định là về đồ uống)
-            return true;
-        }).collect(java.util.stream.Collectors.toList());
-        
-        System.out.println("[AiSuggest] Final count: " + videos.size() + " videos");
-        
-        // Show first 10 videos for debugging
-        System.out.println("[AiSuggest] First 10 videos:");
-        for (int i = 0; i < Math.min(10, videos.size()); i++) {
-            VideoItem v = videos.get(i);
-            System.out.println("  " + (i+1) + ". " + v.getTitle() + " (" + v.getViewCount() + " views)");
-        }
-        
-        if (videos.isEmpty()) {
-            System.err.println("[AiSuggest] No videos from YouTube, using MOCK");
-            videos = createMockVideos();
-        }
+        System.out.println("[AiSuggest] Total dishes with videos: " + dishToVideos.size() + "/" + trendingDishes.size());
 
-        // 2) Tính điểm viral đơn giản theo view/like và độ mới
-        OffsetDateTime now = OffsetDateTime.now();
-        for (VideoItem v : videos) {
-            double view = Math.max(1, Optional.ofNullable(v.getViewCount()).orElse(0L));
-            double like = Math.max(1, Optional.ofNullable(v.getLikeCount()).orElse(0L));
-            double base = Math.log(view) + 2.0 * Math.log(like);
-            long hours = Math.max(1, Duration.between(
-                    Optional.ofNullable(v.getPublishedAt()).orElse(now.minusDays(days)), now
-            ).toHours());
-            double recency = 48.0 / hours;
-            v.setViralScore(base + recency);
-        }
-
-        // 3) DÙNG FALLBACK LOGIC (vì YouTube hết quota, chỉ có mock data tiếng Việt)
-        System.out.println("[AiSuggest] Using Vietnamese fallback logic for dish extraction...");
-        List<DishExtraction> exts = new ArrayList<>();
+        // BƯỚC 3: Gom nhóm và sắp xếp
+        System.out.println("[AiSuggest] Step 3: Grouping and ranking dishes...");
+        List<DishGroup> groups = new ArrayList<>();
         
-        for (VideoItem v : videos) {
-            String title = v.getTitle().toLowerCase();
-            String dishName = null;
+        for (Map.Entry<String, List<VideoItem>> entry : dishToVideos.entrySet()) {
+            String dishName = entry.getKey();
+            List<VideoItem> videos = entry.getValue();
+            
+            double topScore = 0.0;
+            double avgScore = 0.0;
             String recipe = "";
-            double conf = 0.8;
             
-            // Coffee variations (ưu tiên các món cụ thể)
-            if (title.contains("cà phê muối") || title.contains("salted coffee")) {
-                dishName = "Cà phê muối";
-                recipe = "1. Pha 2 shot espresso đậm\n2. Thêm 1/4 thìa cà phê muối hồng Himalaya\n3. Đánh sữa tươi thành foam mịn\n4. Rưới muối lên bọt sữa";
-            }
-            else if (title.contains("cà phê trứng") || title.contains("egg coffee")) {
-                dishName = "Cà phê trứng";
-                recipe = "1. Pha cà phê phin đậm 40ml\n2. Đánh lòng đỏ trứng gà với sữa đặc 5 phút\n3. Cho cà phê vào ly, phủ lớp kem trứng lên trên\n4. Trang trí bột ca cao";
-            }
-            else if (title.contains("cà phê dừa") || title.contains("coconut coffee")) {
-                dishName = "Cà phê dừa";
-                recipe = "1. Pha 2 shot espresso\n2. Cho 100ml nước cốt dừa tươi\n3. Thêm đá viên\n4. Rưới thêm sữa đặc";
-            }
-            else if (title.contains("dalgona")) {
-                dishName = "Dalgona Coffee";
-                recipe = "1. Trộn 2 thìa cà phê bột, 2 thìa đường, 2 thìa nước nóng\n2. Đánh bông 5-7 phút cho đến khi sánh mịn\n3. Cho sữa tươi vào ly đầy đá\n4. Xúc kem cà phê lên trên";
-            }
-            else if (title.contains("latte")) {
-                dishName = "Latte";
-                recipe = "1. Pha 2 shot espresso\n2. Hấp 200ml sữa tươi đến 65°C\n3. Rót sữa từ từ vào espresso\n4. Tạo hình latte art";
-            }
-            else if (title.contains("cappuccino")) {
-                dishName = "Cappuccino";
-                recipe = "1. Pha 1 shot espresso\n2. Đánh sữa tạo foam dày\n3. Rót sữa và foam theo tỷ lệ 1:1\n4. Rắc bột ca cao";
-            }
-            
-            // Milk tea variations
-            else if (title.contains("trà sữa trân châu") || title.contains("boba") || title.contains("đường đen")) {
-                dishName = "Trà sữa trân châu đường đen";
-                recipe = "1. Nấu trân châu với đường đen 30 phút\n2. Pha trà đen đậm, để nguội\n3. Cho trân châu vào ly, rưới đường đen\n4. Thêm đá, trà và sữa tươi";
-            }
-            else if (title.contains("kem cheese") || title.contains("cheese")) {
-                dishName = "Trà sữa kem cheese";
-                recipe = "1. Pha trà oolong\n2. Đánh kem cheese (cream cheese + whipping cream + đường)\n3. Cho trà vào ly có đá\n4. Phủ lớp kem cheese dày lên trên";
-            }
-            else if (title.contains("trà sữa matcha") || title.contains("matcha") && title.contains("trà sữa")) {
-                dishName = "Trà sữa matcha";
-                recipe = "1. Hòa 2g bột matcha với 50ml nước nóng 80°C\n2. Thêm 150ml sữa tươi\n3. Cho đá và đường theo khẩu vị\n4. Lắc đều";
-            }
-            else if (title.contains("trà sữa oolong")) {
-                dishName = "Trà sữa Oolong";
-                recipe = "1. Pha trà Oolong đậm 5 phút\n2. Lọc bỏ lá trà\n3. Thêm sữa tươi và đường\n4. Cho đá và lắc đều";
-            }
-            else if (title.contains("trà sữa")) {
-                dishName = "Trà sữa";
-                recipe = "1. Pha trà đen đậm\n2. Thêm sữa tươi hoặc sữa đặc\n3. Thêm đường/mật ong\n4. Cho đá và lắc đều";
-            }
-            
-            // Matcha variations
-            else if (title.contains("dirty matcha")) {
-                dishName = "Dirty Matcha";
-                recipe = "1. Cho sữa tươi đầy ly có đá\n2. Pha 2g matcha với 30ml nước nóng\n3. Rót matcha từ từ vào sữa tạo hiệu ứng 'dirty'\n4. Không khuấy";
-            }
-            else if (title.contains("matcha latte")) {
-                dishName = "Matcha Latte";
-                recipe = "1. Hòa 2g bột matcha với 50ml nước 80°C\n2. Đánh tan hoàn toàn\n3. Hấp 200ml sữa tươi\n4. Rót sữa vào matcha, tạo latte art";
-            }
-            else if (title.contains("matcha")) {
-                dishName = "Matcha";
-                recipe = "1. Cho 2g bột matcha vào chawan (bát trà)\n2. Thêm 70ml nước 80°C\n3. Dùng chasen (chổi tre) đánh tròn\n4. Uống ngay khi còn nóng";
-            }
-            
-            // Other drinks
-            else if (title.contains("trà đào")) {
-                dishName = "Trà đào cam sả";
-                recipe = "1. Nấu sả với nước đường\n2. Pha trà xanh, để nguội\n3. Thêm đào, cam thái lát\n4. Cho đá và trộn đều";
-            }
-            else if (title.contains("sữa chua")) {
-                dishName = "Sữa chua dâu tây";
-                recipe = "1. Cho sữa chua Hy Lạp vào ly\n2. Thêm dâu tây tươi thái lát\n3. Rưới mật ong\n4. Rắc granola";
-            }
-            
-            if (dishName != null) {
-                exts.add(new DishExtraction(v.getVideoId(), dishName, recipe, conf));
-            }
-        }
-        System.out.println("[AiSuggest] Fallback extracted " + exts.size() + " dishes");
-        
-        Map<String, DishExtraction> idToExt = new HashMap<>();
-        for (DishExtraction de : exts) idToExt.put(de.getId(), de);
-        for (VideoItem v : videos) {
-            DishExtraction de = idToExt.get(v.getVideoId());
-            System.out.println("[AiSuggest] Video " + v.getVideoId() + " title: " + v.getTitle());
-            if (de != null) {
-                String dishName = de.getDishName();
-                System.out.println("[AiSuggest]   -> dish=" + dishName + ", recipe=" + 
-                    (de.getBasicRecipe() == null || de.getBasicRecipe().isBlank() ? "EMPTY" : "YES") + 
-                    ", confidence=" + de.getConfidence());
+            if (!videos.isEmpty()) {
+                // Sort theo viral score
+                videos.sort(Comparator.comparing(VideoItem::getViralScore, Comparator.nullsLast(Double::compareTo)).reversed());
                 
-                // REJECT chỉ tên QUÁ chung chung (1 từ đơn)
-                boolean isGeneric = dishName != null && dishName.matches("^(Coffee|Tea|Drink)$");
+                topScore = Optional.ofNullable(videos.get(0).getViralScore()).orElse(0.0);
+                avgScore = videos.stream()
+                        .mapToDouble(v -> Optional.ofNullable(v.getViralScore()).orElse(0.0))
+                        .average()
+                        .orElse(0.0);
                 
-                // Chấp nhận nếu có ít nhất 2 từ hoặc có modifier
-                boolean isSpecific = dishName != null && (
-                    dishName.split("\\s+").length >= 2 ||  // ít nhất 2 từ
-                    dishName.contains("Latte") ||
-                    dishName.contains("Matcha") ||
-                    dishName.contains("Brew") ||
-                    dishName.contains("Milk Tea")
-                );
-                
-                if (dishName != null && !dishName.isBlank() && de.getConfidence() >= 0.25 && (isSpecific || !isGeneric)) {
-                    v.setDishName(dishName);
-                    v.setDishKey(keyOf(dishName));
-                    v.setBasicRecipe(de.getBasicRecipe());
-                    System.out.println("[AiSuggest]   -> ACCEPTED: " + dishName);
-                } else {
-                    if (isGeneric) {
-                        System.out.println("[AiSuggest]   -> REJECTED: GENERIC NAME '" + dishName + "'");
-                    } else {
-                        System.out.println("[AiSuggest]   -> REJECTED (confidence=" + de.getConfidence() + ")");
+                // Lấy công thức từ video đầu tiên
+                recipe = videos.get(0).getBasicRecipe();
+            }
+            
+            // Nếu không có recipe từ video, lấy từ Gemini
+            if (recipe == null || recipe.isBlank()) {
+                // Tìm từ Gemini info
+                for (GeminiClient.TrendingDishInfo dishInfo : trendingDishes) {
+                    if (dishInfo.getName().equals(dishName)) {
+                        recipe = dishInfo.getBasicRecipe();
+                        break;
                     }
                 }
-            } else {
-                System.out.println("[AiSuggest]   -> No extraction");
             }
-        }
-
-        // 4) Lọc video có dishKey
-        List<VideoItem> usable = new ArrayList<>();
-        for (VideoItem v : videos) {
-            if (v.getDishKey() != null && !v.getDishKey().isBlank()) usable.add(v);
-        }
-
-        // 5) Gom nhóm theo dishKey và sort theo viralScore
-        Map<String, List<VideoItem>> grouped = new HashMap<>();
-        for (VideoItem v : usable) {
-            grouped.computeIfAbsent(v.getDishKey(), k -> new ArrayList<>()).add(v);
-        }
-
-        List<DishGroup> groups = new ArrayList<>();
-        for (Map.Entry<String,List<VideoItem>> e : grouped.entrySet()) {
-            List<VideoItem> sorted = new ArrayList<>(e.getValue());
-            sorted.sort(Comparator.comparing(VideoItem::getViralScore, Comparator.nullsLast(Double::compareTo)).reversed());
-            String name = sorted.get(0).getDishName();
-            String recipe = sorted.get(0).getBasicRecipe(); // lấy công thức từ video có viralScore cao nhất
-            double top = Optional.ofNullable(sorted.get(0).getViralScore()).orElse(0.0);
+            
+            double rating = calculateRating(avgScore, videos.size());
+            
             groups.add(DishGroup.builder()
-                    .key(e.getKey())
-                    .name(name)
+                    .key(keyOf(dishName))
+                    .name(dishName)
                     .basicRecipe(recipe != null ? recipe : "")
-                    .totalVideos(sorted.size())
-                    .topScore(top)
-                    .videos(sorted)
+                    .totalVideos(videos.size())
+                    .topScore(topScore)
+                    .rating(rating)
+                    .videos(videos)
                     .build());
         }
 
+        // Sort theo topScore
         groups.sort(Comparator.comparing(DishGroup::getTopScore).reversed());
+        
+        // Giới hạn số lượng món
+        if (groups.size() > max / 5) {
+            groups = groups.subList(0, Math.min(max / 5, groups.size()));
+        }
 
         long tookMs = System.currentTimeMillis() - t0;
-        System.out.println("[AiSuggest] Finished: " + groups.size() + " dish groups, took " + tookMs + "ms");
+        int totalVideos = groups.stream().mapToInt(DishGroup::getTotalVideos).sum();
+        
+        System.out.println("[AiSuggest] Finished: " + groups.size() + " dish groups, " + totalVideos + " total videos, took " + tookMs + "ms");
         
         return DishTrendsResponse.builder()
                 .data(groups)
                 .meta(Map.of(
                         "days", days,
                         "max", max,
-                        "totalVideos", videos.size(),
+                        "totalVideos", totalVideos,
                         "grouped", groups.size(),
                         "tookMs", tookMs
                 ))
                 .build();
     }
 
+    /**
+     * Lọc video liên quan đến món cụ thể (công thức/giới thiệu)
+     */
+    private List<VideoItem> filterRelevantVideos(List<VideoItem> videos, String dishName) {
+        String dishLower = dishName.toLowerCase();
+        return videos.stream().filter(v -> {
+            String title = (v.getTitle() != null ? v.getTitle() : "").toLowerCase();
+            String desc = (v.getDescription() != null ? v.getDescription() : "").toLowerCase();
+            String text = title + " " + desc;
+            
+            // ===== BƯỚC 1: REJECT các loại video CHẮC CHẮN không phải recipe =====
+            
+            // REJECT: Spam, memes, animations
+            if (title.contains("#meme") || title.contains("#animation") || title.contains("#cartoon") || 
+                title.contains("brainrot") || title.contains("gấu bông") || title.contains("đồ chơi")) {
+                System.out.println("[Filter] REJECTED (spam/meme): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Thiết bị/máy móc (ưu tiên cao vì dễ nhầm)
+            boolean isEquipment = 
+                title.contains("máy pha") || title.contains("máy xay") || title.contains("máy đánh") ||
+                title.contains("máy làm") || title.contains("máy nén") || title.contains("thiết bị") ||
+                title.contains("đèn thả") || title.contains("đèn led") || title.contains("đèn trang trí") ||
+                title.contains("bếp điện") || title.contains("lò nướng") || title.contains("tủ lạnh") ||
+                title.matches(".*\\d+k.*") && (title.contains("mua") || title.contains("bán") || title.contains("giá")) ||  // "giá 2 triệu", "chỉ 99k"
+                title.matches(".*\\d+ triệu.*") || title.matches(".*giá chỉ.*") ||
+                title.contains("sale") || title.contains("deal") || title.contains("giảm giá");
+            
+            // CHỈ ACCEPT thiết bị NẾU có từ "cách dùng" hoặc "hướng dẫn"
+            if (isEquipment && !title.contains("cách dùng") && !title.contains("hướng dẫn sử dụng")) {
+                System.out.println("[Filter] REJECTED (equipment): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Shop/Quán/Địa điểm
+            boolean isShopLocation = 
+                title.contains("shop") || title.contains("store") || title.contains("cửa hàng") ||
+                title.contains("quán") && (title.contains("ghé") || title.contains("check in") || title.contains("review địa điểm")) ||
+                title.contains("menu giá") || title.contains("bảng giá") || title.contains("nhà hàng") ||
+                title.contains("decor") || title.contains("trang trí") || title.contains("thiết kế quán") ||
+                title.contains("lắp đèn") || title.contains("sửa chữa") || title.contains("thi công");
+            
+            // CHỈ ACCEPT shop NẾU có từ recipe/công thức
+            if (isShopLocation && !title.contains("công thức") && !title.contains("recipe") && !title.contains("cách làm")) {
+                System.out.println("[Filter] REJECTED (shop/location): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Sản phẩm vật lý khác
+            if ((title.contains("khay") || title.contains("ly nhựa") || title.contains("cốc nhựa") ||
+                 title.contains("quầy bar") || title.contains("kệ trưng bày") || title.contains("bao bì") ||
+                 title.contains("túi giấy") || title.contains("hộp đựng")) && 
+                !title.contains("cách") && !title.contains("recipe") && !title.contains("hướng dẫn")) {
+                System.out.println("[Filter] REJECTED (physical product): " + v.getTitle());
+                return false;
+            }
+            
+            // ===== BƯỚC 2: ACCEPT video về recipe/tutorial/giới thiệu =====
+            
+            // Từ khóa MẠNH về recipe/tutorial (ưu tiên cao)
+            boolean hasStrongRecipeKeyword = 
+                title.contains("cách làm") || title.contains("cách pha") || title.contains("recipe") || 
+                title.contains("how to make") || title.contains("hướng dẫn") || 
+                title.contains("công thức") || title.contains("pha chế") ||
+                title.contains("bí quyết") || title.contains("mẹo") || title.contains("tips") ||
+                title.contains("diy") || title.contains("homemade") || title.contains("tự làm");
+            
+            // Từ khóa về giới thiệu/review món (medium)
+            boolean hasIntroKeyword = 
+                title.contains("giới thiệu") || title.contains("thử") || title.contains("review món") ||
+                title.contains("món mới") || title.contains("hot trend") || title.contains("viral") ||
+                title.contains("trải nghiệm") && text.contains(dishLower);
+            
+            // Kiểm tra xem title có chứa tên món không
+            String[] dishKeywords = dishLower.split("\\s+");
+            boolean hasDishKeyword = false;
+            for (String keyword : dishKeywords) {
+                if (keyword.length() > 2 && title.contains(keyword)) {
+                    hasDishKeyword = true;
+                    break;
+                }
+            }
+            
+            // LOGIC ACCEPT:
+            // 1. Có từ khóa recipe MẠNH → ACCEPT ngay
+            if (hasStrongRecipeKeyword) {
+                System.out.println("[Filter] ACCEPTED (strong recipe keyword): " + v.getTitle());
+                return true;
+            }
+            
+            // 2. Có từ khóa giới thiệu + tên món → ACCEPT
+            if (hasIntroKeyword && hasDishKeyword) {
+                System.out.println("[Filter] ACCEPTED (intro + dish name): " + v.getTitle());
+                return true;
+            }
+            
+            // 3. Có tên món + từ "cách" (rộng hơn) → ACCEPT
+            if (hasDishKeyword && title.contains("cách")) {
+                System.out.println("[Filter] ACCEPTED (dish + cách): " + v.getTitle());
+                return true;
+            }
+            
+            // 4. Nới lỏng: Nếu video có tên món và không bị reject ở trên → ACCEPT
+            // (để tránh mất quá nhiều video hợp lệ)
+            if (hasDishKeyword) {
+                System.out.println("[Filter] ACCEPTED (has dish keyword, not spam/shop/equipment): " + v.getTitle());
+                return true;
+            }
+            
+            // 5. REJECT tất cả các trường hợp còn lại
+            System.out.println("[Filter] REJECTED (no dish keyword): " + v.getTitle());
+            return false;
+            
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Tính rating 1-5 sao dựa trên viral score và số lượng video
+     * @param avgScore viral score trung bình
+     * @param videoCount số lượng video
+     * @return rating từ 1.0 đến 5.0
+     */
+    private double calculateRating(double avgScore, int videoCount) {
+        // Công thức:
+        // - Base rating từ viral score (0-4 sao)
+        // - Bonus từ số lượng video (0-1 sao)
+        
+        // 1. Base rating từ viral score (log scale)
+        // avgScore thường trong khoảng 10-50
+        double baseRating = Math.min(4.0, avgScore / 10.0);
+        
+        // 2. Bonus từ số lượng video (càng nhiều video = càng hot)
+        double videoBonus = Math.min(1.0, videoCount / 5.0);
+        
+        // 3. Tổng rating (1.0 - 5.0)
+        double rating = Math.max(1.0, baseRating + videoBonus);
+        
+        // 4. Làm tròn 1 chữ số thập phân
+        return Math.round(rating * 10.0) / 10.0;
+    }
+    
     private String keyOf(String name) {
         if (name == null) return null;
         String s = name.toLowerCase().trim();

@@ -3,6 +3,7 @@ package com.kopi.kopi.service.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kopi.kopi.dto.ai.VideoItem;
+import com.kopi.kopi.exception.YouTubeQuotaExceededException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -10,8 +11,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -35,6 +35,21 @@ public class YouTubeClient {
             String safeSearch,
             boolean embeddableOnly
     ) {
+        return searchVideos(search, days, maxResults, regionCode, language, shortsOnly, videoCategoryId, safeSearch, embeddableOnly, "date");
+    }
+    
+    public List<VideoItem> searchVideos(
+            String search,
+            int days,
+            int maxResults,
+            String regionCode,
+            String language,
+            boolean shortsOnly,
+            String videoCategoryId,
+            String safeSearch,
+            boolean embeddableOnly,
+            String order
+    ) {
         try {
             if (apiKey == null || apiKey.isBlank()) {
                 System.err.println("[YT] Missing API key. Set ai.youtube.key or YOUTUBE_API_KEY");
@@ -44,13 +59,22 @@ public class YouTubeClient {
             String q = (search == null || search.isBlank()) ? "coffee drink" : search.trim();
 
             int maxSafe  = Math.min(Math.max(1, maxResults), 50);
+            
+            // 2) Tính publishedAfter nếu days > 0 (phải format UTC với 'Z' cho YouTube API)
+            String publishedAfter = null;
+            if (days > 0) {
+                publishedAfter = OffsetDateTime.now(ZoneOffset.UTC).minusDays(days)
+                    .format(DateTimeFormatter.ISO_INSTANT);
+            }
 
-            // 3) URL chính - KHÔNG dùng publishedAfter vì gây lỗi 400
+            // 3) URL chính với publishedAfter để lọc video gần đây
+            String orderParam = (order != null && !order.isBlank()) ? order : "date";
             StringBuilder url = new StringBuilder("https://www.googleapis.com/youtube/v3/search")
-                    .append("?part=snippet&type=video&order=date")
+                    .append("?part=snippet&type=video&order=").append(orderParam)
                     .append("&maxResults=").append(maxSafe)
                     .append("&q=").append(URLEncoder.encode(q, StandardCharsets.UTF_8))
                     .append("&key=").append(apiKey);
+            if (publishedAfter != null) url.append("&publishedAfter=").append(publishedAfter);
             if (regionCode != null && !regionCode.isBlank()) url.append("&regionCode=").append(regionCode);
             if (language != null && !language.isBlank())   url.append("&relevanceLanguage=").append(language);
             if (shortsOnly) url.append("&videoDuration=short");
@@ -67,6 +91,17 @@ public class YouTubeClient {
             } catch (Exception ex) {
                 System.err.println("[YT] HTTP Exception: " + ex.getClass().getName() + ": " + ex.getMessage());
                 String msg = ex.getMessage() == null ? "" : ex.getMessage();
+                
+                // Check nếu là quota exceeded
+                if (msg.contains("quotaExceeded") || msg.contains("quota")) {
+                    String resetTime = calculateQuotaResetTime();
+                    System.err.println("[YT] ❌ QUOTA EXCEEDED! Reset time: " + resetTime);
+                    throw new YouTubeQuotaExceededException(
+                        "YouTube API đã hết lượt tìm kiếm. Vui lòng thử lại sau " + resetTime,
+                        resetTime
+                    );
+                }
+                
                 // Nếu lỗi vì published_after, thử bỏ tham số này và gọi lại
                 if (msg.contains("published_after") || msg.contains("Invalid time format")) {
                     System.err.println("[YT] publishedAfter rejected, retrying without it");
@@ -209,7 +244,7 @@ public class YouTubeClient {
             if (thumbnailUrl.isBlank()) {
                 thumbnailUrl = "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg";
             }
-            
+
             map.put(vid, VideoItem.builder()
                     .videoId(vid)
                     .title(sn.path("title").asText(""))
@@ -239,6 +274,37 @@ public class YouTubeClient {
             return hours * 3600 + minutes * 60 + seconds;
         } catch (Exception e) {
             return 0L;
+        }
+    }
+    
+    /**
+     * Tính thời gian còn lại đến khi YouTube API quota reset
+     * YouTube API quota reset vào 12:00 AM (midnight) Pacific Time
+     */
+    private String calculateQuotaResetTime() {
+        try {
+            // Lấy thời gian hiện tại ở Pacific Time
+            ZoneId pacificZone = ZoneId.of("America/Los_Angeles");
+            ZonedDateTime nowPacific = ZonedDateTime.now(pacificZone);
+            
+            // Tính midnight tiếp theo (12:00 AM Pacific)
+            ZonedDateTime nextMidnight = nowPacific.toLocalDate()
+                .plusDays(1)
+                .atStartOfDay(pacificZone);
+            
+            // Tính khoảng thời gian còn lại
+            Duration remaining = Duration.between(nowPacific, nextMidnight);
+            long hours = remaining.toHours();
+            long minutes = remaining.toMinutes() % 60;
+            
+            // Format thành chuỗi dễ đọc
+            if (hours > 0) {
+                return hours + " giờ " + minutes + " phút";
+            } else {
+                return minutes + " phút";
+            }
+        } catch (Exception e) {
+            return "24 giờ";
         }
     }
 

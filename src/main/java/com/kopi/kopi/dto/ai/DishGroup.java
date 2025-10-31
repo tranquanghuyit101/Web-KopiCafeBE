@@ -10,5 +10,6 @@ public class DishGroup {
     private String basicRecipe;  // công thức cơ bản
     private int totalVideos;
     private double topScore;     // max viralScore trong nhóm
+    private double rating;       // đánh giá 1-5 sao (dựa trên viral score)
     private List<VideoItem> videos; // đã sort viralScore desc
 }

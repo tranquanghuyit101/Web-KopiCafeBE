@@ -40,40 +40,63 @@ public class GeminiClient {
         }
 
         String instr = """
-            Role: Expert barista & drink analyzer
+            Role: Expert Vietnamese Coffee Shop Menu Consultant
             
-            Task: Analyze each YouTube video and extract:
-            1. SPECIFIC DRINK NAME (dishName)
-            2. BASIC RECIPE (basicRecipe)
+            Task: Analyze EACH YouTube video INDEPENDENTLY and extract:
+            1. SPECIFIC DRINK NAME (dishName) - in Vietnamese if possible
+            2. BASIC RECIPE (basicRecipe) - 3-4 steps in Vietnamese
             
-            CRITICAL NAMING RULES:
-            - MUST be ULTRA-SPECIFIC. Extract the EXACT variant from title/description:
-              * "Cold Brew Coffee", "Iced Latte", "Cappuccino", "Espresso", "Americano" → ALL DIFFERENT
-              * "Vietnamese Egg Coffee", "Salted Coffee", "Coconut Coffee" → ALL DIFFERENT
-              * "Brown Sugar Milk Tea", "Matcha Milk Tea", "Cheese Foam Milk Tea" → ALL DIFFERENT
-              * "Dirty Matcha", "Iced Matcha Latte", "Matcha Frappe" → ALL DIFFERENT
+            CRITICAL INSTRUCTIONS:
+            ══════════════════════════════════════════════════════════════
             
-            - FORBIDDEN GENERIC NAMES (AUTO-REJECT):
-              * "Coffee" ❌ → must be "Cold Brew Coffee", "Iced Coffee", etc.
-              * "Milk Tea" ❌ → must be "Brown Sugar Milk Tea", "Boba Milk Tea", etc.
-              * "Matcha" ❌ → must be "Matcha Latte", "Iced Matcha", etc.
-              * "Tea" ❌ → must be specific tea type
+            📋 STEP 1: IDENTIFY THE MAIN DRINK TYPE
+            - Read title & description carefully
+            - Identify MAIN ingredient/theme:
+              * Cà phê (Coffee): espresso, cold brew, phin, latte, cappuccino
+              * Trà sữa (Milk Tea): boba, trân châu, cheese foam, oolong
+              * Trà trái cây (Fruit Tea): đào, chanh, cam, dâu, đậu biếc
+              * Matcha: latte, dirty, frappe, kem muối
+              * Chocolate: hot chocolate, socola, cacao
+              * Smoothie/Sinh tố: bơ, dâu, xoài, chuối
+              * Yogurt/Sữa chua: dâu, trái cây, hạt chia
             
-            - If title has specific name → USE IT EXACTLY
-            - If title only says "coffee recipe" without variant → dishName = null
+            📋 STEP 2: EXTRACT SPECIFIC VARIANT
+            - USE EXACT NAME from title if available
+            - Include ALL modifiers:
+              ✅ "Cà phê muối" (NOT just "Coffee")
+              ✅ "Trà sữa trân châu đường đen" (NOT just "Milk Tea")
+              ✅ "Matcha Latte" (NOT just "Matcha")
+              ✅ "Hot Chocolate bạc hà" (NOT just "Hot Chocolate")
             
-            RECIPE RULES:
-            - MANDATORY: Must provide recipe (infer from title/desc if needed)
-            - Format: "1. [Step 1]\\n2. [Step 2]\\n3. [Step 3]"
-            - Examples:
-              * "1. Brew 2 espresso shots\\n2. Add 1 tsp salt\\n3. Froth with milk"
-              * "1. Mix matcha powder with hot water\\n2. Add milk\\n3. Pour over ice"
-            - If video is NOT a recipe/tutorial → dishName = null
+            📋 STEP 3: AVOID DUPLICATES
+            - If video is about "Matcha" but query was "coffee recipe" → dishName = null
+            - If video is UNRELATED to drinks (product review, shop tour) → dishName = null
+            - If video is TUTORIAL/RECIPE → confidence HIGH (0.7-1.0)
+            - If video is just DRINKING/TASTING → confidence LOW (0.3-0.5)
             
-            CONFIDENCE:
-            - 0.7-1.0: Specific name clearly stated
-            - 0.4-0.6: Can infer specific variant
-            - < 0.4: Too vague → dishName = null
+            📋 STEP 4: GENERATE RECIPE
+            - MUST be in Vietnamese
+            - 3-4 clear steps
+            - Include measurements (ml, g, thìa)
+            - Example:
+              "1. Pha 2 shot espresso đậm\\n2. Thêm 1/4 thìa muối hồng Himalaya\\n3. Đánh sữa tạo foam\\n4. Rưới muối lên bọt sữa"
+            
+            ══════════════════════════════════════════════════════════════
+            
+            FORBIDDEN GENERIC NAMES (AUTO-REJECT):
+            ❌ "Coffee", "Tea", "Milk Tea", "Matcha", "Drink"
+            ✅ "Iced Coffee", "Matcha Latte", "Trà sữa Oolong" (OK if ≥2 words)
+            
+            CONFIDENCE SCORING:
+            - 0.8-1.0: Title explicitly states drink name + clear recipe/tutorial
+            - 0.5-0.7: Drink name clear but video is taste test/review
+            - 0.3-0.4: Can infer from context but not explicitly stated
+            - < 0.3: Too vague or unrelated → dishName = null
+            
+            SPECIAL CASES:
+            - Matcha videos: MUST specify variant ("Matcha Latte", "Dirty Matcha", etc.)
+            - Coffee videos: MUST specify type ("Cà phê muối", "Latte", "Cappuccino", etc.)
+            - If video shows multiple drinks: Pick the MAIN one (highest focus)
             
             OUTPUT (STRICT JSON):
             { "items": [ { "id": string, "dishName": string|null, "basicRecipe": string, "confidence": number } ] }
@@ -237,6 +260,157 @@ public class GeminiClient {
         return s == null ? "" : s.replaceAll("\\(.*?\\)", "").replaceAll("\\[.*?\\]", "").trim();
     }
 
+    /**
+     * Tìm các món đồ uống hot trend ở Việt Nam hiện tại
+     * @param days số ngày gần đây để xem xét trend
+     * @param maxResults số lượng món tối đa muốn lấy
+     * @return danh sách tên món và công thức cơ bản
+     */
+    public List<TrendingDishInfo> findHotTrendDishes(int days, int maxResults) {
+        System.out.println("[Gemini] findHotTrendDishes called with days=" + days + ", maxResults=" + maxResults);
+        System.out.println("[Gemini] API Key present: " + (apiKey != null && !apiKey.isBlank()));
+        System.out.println("[Gemini] Model: " + model);
+        
+        String currentDate = java.time.LocalDate.now().toString();
+        String prompt = """
+            Nhiệm vụ: Tìm kiếm và liệt kê các đồ uống HOT TREND hiện nay tại Việt Nam (tính đến %s).
+            
+            Hãy search trên Google với các từ khóa:
+            - "đồ uống hot trend việt nam 2024 2025"
+            - "món nước viral tiktok instagram"
+            - "cafe trà sữa mới lạ"
+            - "drink trends vietnam"
+            
+            Yêu cầu:
+            1. Tìm ít nhất %d món đồ uống đang THỰC SỰ trending (có bằng chứng từ mạng xã hội, báo chí)
+            2. Bao gồm cả:
+               - Cà phê đặc biệt (cà phê muối, cà phê trứng, cold brew, ...)
+               - Trà sữa và biến thể (shan tuyết, kem trứng nướng, kem cheese, ...)
+               - Matcha variations (dirty matcha, matcha latte, coco matcha, ...)
+               - Trà trái cây (trà đào cam sả, trà mãng cầu, ...)
+               - Healthy drinks (kombucha, wellness shots, sinh tố xanh, oat milk latte, ...)
+            3. Mỗi món PHẢI có công thức cơ bản (3-4 bước bằng tiếng Việt)
+            4. Ưu tiên món MỚI, ĐỘCĐÁO, đang VIRAL trên social media
+            
+            Format JSON (BẮT BUỘC):
+            {
+              "dishes": [
+                {
+                  "name": "Cà phê muối",
+                  "basicRecipe": "1. Pha 2 shot espresso đậm\\n2. Thêm 1/4 thìa muối hồng Himalaya\\n3. Đánh sữa tạo foam\\n4. Rưới muối lên bọt sữa",
+                  "trendingScore": 0.85,
+                  "source": "TikTok viral"
+                }
+              ]
+            }
+            
+            Trả về đúng %d món, sắp xếp theo độ trending (cao nhất trước).
+        """.formatted(currentDate, maxResults, maxResults);
+
+        try {
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                    + model + ":generateContent?key=" + apiKey;
+            
+            System.out.println("[Gemini] Calling URL: " + url.replace(apiKey, "***"));
+
+            // Enable Google Search grounding (for gemini-2.0 models)
+            Map<String,Object> body = Map.of(
+                    "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
+                    "generationConfig", Map.of(
+                        "responseMimeType", "application/json",
+                        "temperature", 0.7
+                    ),
+                    "tools", List.of(Map.of(
+                        "googleSearch", Map.of()  // Sử dụng googleSearch cho gemini-2.0
+                    ))
+            );
+
+            HttpHeaders h = new HttpHeaders();
+            h.setContentType(MediaType.APPLICATION_JSON);
+
+            ResponseEntity<String> r = http.postForEntity(url, new HttpEntity<>(body, h), String.class);
+            System.out.println("[Gemini] Response status: " + r.getStatusCode());
+            System.out.println("[Gemini] Response body (first 500 chars): " + 
+                (r.getBody() != null ? r.getBody().substring(0, Math.min(500, r.getBody().length())) : "null"));
+            
+            JsonNode root = om.readTree(r.getBody());
+            JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
+            
+            // Gemini có thể trả về multiple parts, cần concatenate lại
+            StringBuilder textBuilder = new StringBuilder();
+            for (JsonNode part : parts) {
+                String partText = part.path("text").asText("");
+                textBuilder.append(partText);
+            }
+            String text = textBuilder.toString();
+            
+            // Strip markdown code block nếu có
+            text = text.trim();
+            if (text.startsWith("```json")) {
+                text = text.substring(7);
+            } else if (text.startsWith("```")) {
+                text = text.substring(3);
+            }
+            if (text.endsWith("```")) {
+                text = text.substring(0, text.length() - 3);
+            }
+            text = text.trim();
+            
+            System.out.println("[Gemini] Extracted text (first 300 chars): " + 
+                (text.length() > 300 ? text.substring(0, 300) : text));
+
+            JsonNode parsed = om.readTree(text);
+            List<TrendingDishInfo> out = new ArrayList<>();
+            for (JsonNode it : parsed.path("dishes")) {
+                String name = it.path("name").asText("");
+                String recipe = it.path("basicRecipe").asText("");
+                double score = it.path("trendingScore").asDouble(0.5);
+                if (!name.isBlank()) {
+                    out.add(new TrendingDishInfo(name, recipe, score));
+                }
+            }
+            System.out.println("[Gemini] Successfully parsed " + out.size() + " dishes");
+            return out;
+        } catch (Exception e) {
+            System.err.println("[Gemini] EXCEPTION: " + e.getClass().getName() + ": " + e.getMessage());
+            e.printStackTrace();
+            // Fallback: return common Vietnamese drinks
+            System.out.println("[Gemini] Using fallback dishes...");
+            return getFallbackTrendingDishes(maxResults);
+        }
+    }
+
+    public List<TrendingDishInfo> getFallbackTrendingDishes(int maxResults) {
+        // Mở rộng danh sách fallback để match với trend hiện tại
+        List<TrendingDishInfo> fallback = List.of(
+                // Cà phê trending
+                new TrendingDishInfo("Cà phê muối", "1. Pha 2 shot espresso đậm\n2. Thêm 1/4 thìa muối hồng Himalaya\n3. Đánh sữa tạo foam\n4. Rưới muối lên bọt sữa", 0.85),
+                new TrendingDishInfo("Cà phê trứng", "1. Pha cà phê phin đậm 40ml\n2. Đánh lòng đỏ trứng gà với sữa đặc 5 phút\n3. Cho cà phê vào ly, phủ lớp kem trứng lên trên\n4. Trang trí bột ca cao", 0.82),
+                new TrendingDishInfo("Cà phê ủ lạnh Cold Brew", "1. Ngâm 100g cà phê xay thô với 1 lít nước lạnh\n2. Để tủ lạnh 12-24 giờ\n3. Lọc bỏ bã\n4. Pha loãng với nước đá và sữa", 0.80),
+                new TrendingDishInfo("Oat Milk Latte", "1. Pha 2 shot espresso\n2. Hấp 200ml sữa yến mạch đến 65°C\n3. Rót sữa vào espresso\n4. Tạo latte art", 0.78),
+                
+                // Matcha trending
+                new TrendingDishInfo("Coco Matcha", "1. Hòa 2g matcha với 30ml nước dừa nóng\n2. Thêm 150ml nước cốt dừa tươi\n3. Cho đá viên\n4. Trang trí dừa nạo", 0.82),
+                new TrendingDishInfo("Dirty Matcha", "1. Cho sữa tươi đầy ly có đá\n2. Pha 2g matcha với 30ml nước nóng\n3. Rót matcha từ từ vào sữa tạo hiệu ứng 'dirty'\n4. Không khuấy", 0.80),
+                new TrendingDishInfo("Matcha Latte", "1. Hòa 2g bột matcha với 50ml nước 80°C\n2. Đánh tan hoàn toàn\n3. Hấp 200ml sữa tươi\n4. Rót sữa vào matcha, tạo latte art", 0.75),
+                
+                // Trà sữa trending
+                new TrendingDishInfo("Trà sữa Shan Tuyết", "1. Pha trà Shan Tuyết đậm 5 phút\n2. Lọc lá trà\n3. Thêm sữa tươi và đường mật\n4. Cho đá và lắc đều", 0.78),
+                new TrendingDishInfo("Trà sữa kem trứng nướng", "1. Pha trà đen đậm\n2. Làm kem trứng nướng (trứng + sữa đặc + caramel)\n3. Cho trà vào ly có đá\n4. Phủ lớp kem trứng nướng lên trên", 0.76),
+                new TrendingDishInfo("Trà sữa kem cheese", "1. Pha trà oolong\n2. Đánh kem cheese (cream cheese + whipping cream + đường)\n3. Cho trà vào ly có đá\n4. Phủ lớp kem cheese dày lên trên", 0.74),
+                
+                // Trà trái cây
+                new TrendingDishInfo("Trà đào cam sả", "1. Nấu sả với nước đường\n2. Pha trà xanh, để nguội\n3. Thêm đào, cam thái lát\n4. Cho đá và trộn đều", 0.75),
+                new TrendingDishInfo("Trà mãng cầu", "1. Pha trà xanh đậm\n2. Thêm mãng cầu tươi xay nhuyễn\n3. Cho đường mật\n4. Thêm đá và trang trí mãng cầu", 0.72),
+                
+                // Healthy drinks
+                new TrendingDishInfo("Kombucha", "1. Ủ trà đen với SCOBY 7-14 ngày\n2. Lọc bỏ SCOBY\n3. Thêm nước ép trái cây\n4. Ủ thêm 3 ngày để có ga", 0.70),
+                new TrendingDishInfo("Wellness Shot", "1. Xay gừng tươi, nghệ tươi, chanh\n2. Thêm mật ong và tiêu đen\n3. Lọc lấy nước\n4. Uống 30ml/ngày", 0.68),
+                new TrendingDishInfo("Sinh tố xanh", "1. Xay rau bina, chuối, táo\n2. Thêm sữa hạnh nhân\n3. Thêm mật ong\n4. Xay nhuyễn với đá", 0.66)
+        );
+        return fallback.stream().limit(maxResults).collect(Collectors.toList());
+    }
+
     // Heuristic cực nhẹ để dự phòng khi không gọi được API
     private String guessDishName(String title, String desc) {
         String t = (title == null ? "" : title).toLowerCase();
@@ -253,5 +427,24 @@ public class GeminiClient {
         if (text.contains("coffee")) return "Coffee";
         if (text.contains("matcha")) return "Matcha";
         return null;
+    }
+
+    /**
+     * DTO cho thông tin món hot trend từ Gemini
+     */
+    public static class TrendingDishInfo {
+        private final String name;
+        private final String basicRecipe;
+        private final double trendingScore;
+
+        public TrendingDishInfo(String name, String basicRecipe, double trendingScore) {
+            this.name = name;
+            this.basicRecipe = basicRecipe;
+            this.trendingScore = trendingScore;
+        }
+
+        public String getName() { return name; }
+        public String getBasicRecipe() { return basicRecipe; }
+        public double getTrendingScore() { return trendingScore; }
     }
 }
