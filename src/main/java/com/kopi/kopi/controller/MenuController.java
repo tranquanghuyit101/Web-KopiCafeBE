@@ -1,34 +1,25 @@
 package com.kopi.kopi.controller;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.kopi.kopi.entity.Category;
-import com.kopi.kopi.entity.Product;
-import com.kopi.kopi.repository.CategoryRepository;
+import com.kopi.kopi.service.MenuService;
 
 @RestController
 @RequestMapping("/api/menu")
 public class MenuController {
-	private final CategoryRepository categoryRepository;
+	private final MenuService menuService;
 
-	public MenuController(CategoryRepository categoryRepository) {
-		this.categoryRepository = categoryRepository;
+	public MenuController(MenuService menuService) {
+		this.menuService = menuService;
 	}
 
 	@GetMapping
 	public List<MenuCategoryDto> getMenu() {
-		List<Category> categories = categoryRepository.findAll();
-		return categories.stream().map(cat -> {
-			List<MenuProductDto> products = cat.getProducts().stream()
-					.map(p -> new MenuProductDto(p.getName(), p.getPrice()))
-					.collect(Collectors.toList());
-			return new MenuCategoryDto(cat.getName(), products);
-		}).collect(Collectors.toList());
+		return menuService.getMenu();
 	}
 
 	public static class MenuCategoryDto {
