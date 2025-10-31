@@ -9,4 +9,8 @@ import com.kopi.kopi.entity.Product;
 public interface ProductRepository extends JpaRepository<Product, Integer> {
 	Page<Product> findByNameContainingIgnoreCase(String name, Pageable pageable);
 	Page<Product> findByCategory_CategoryIdAndNameContainingIgnoreCase(Integer categoryId, String name, Pageable pageable);
+
+	// Only active products
+	Page<Product> findByAvailableTrueAndNameContainingIgnoreCase(String name, Pageable pageable);
+	Page<Product> findByAvailableTrueAndCategory_CategoryIdAndNameContainingIgnoreCase(Integer categoryId, String name, Pageable pageable);
 } 
