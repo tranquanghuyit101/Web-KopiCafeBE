@@ -24,20 +24,16 @@ public class CategoryController {
 
     @GetMapping
     public Map<String, Object> list() {
-        List<Map<String, Object>> items = categoryRepository.findAll().stream()
-            .sorted(Comparator.comparing(cat -> cat.getDisplayOrder() == null ? 0 : cat.getDisplayOrder()))
-            .map(cat -> {
-                Map<String, Object> m = new HashMap<>();
-                m.put("id", cat.getCategoryId());
-                m.put("name", cat.getName());
-                m.put("display_order", cat.getDisplayOrder());
-                return m;
-            })
-            .collect(Collectors.toList());
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", items);
-        return response;
+        List<Category> list = categoryRepository.findAll();
+        List<Map<String, Object>> items = list.stream().map(c -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", c.getCategoryId());
+            m.put("name", c.getName());
+            m.put("is_active", c.getActive());
+            m.put("display_order", c.getDisplayOrder());
+            return m;
+        }).collect(Collectors.toList());
+        return Map.of("data", items);
     }
 }
 
