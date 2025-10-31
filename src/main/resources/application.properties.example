@@ -1,0 +1,57 @@
+spring.application.name=kopi
+server.port=8080
+
+# --- SQL Server ---
+spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=Kopi;encrypt=true;trustServerCertificate=true
+spring.datasource.driverClassName=com.microsoft.sqlserver.jdbc.SQLServerDriver
+spring.datasource.username=sa
+spring.datasource.password=YOUR_DATABASE_PASSWORD
+
+spring.jpa.hibernate.ddl-auto=none
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.SQLServerDialect
+spring.sql.init.mode=never
+spring.datasource.hikari.read-only=false
+
+# JWT config
+app.jwt.secret=YOUR_JWT_SECRET_KEY_PLEASE_CHANGE_IN_PRODUCTION
+app.jwt.expiration-ms=86400000
+app.jwt.remember-expiration-ms=604800000
+
+server.servlet.context-path=/Kopi
+
+# --- Gmail SMTP ---
+spring.mail.host=smtp.gmail.com
+spring.mail.port=587
+spring.mail.username=YOUR_GMAIL_ADDRESS
+spring.mail.password=YOUR_GMAIL_APP_PASSWORD
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.default-encoding=UTF-8
+spring.mail.properties.mail.smtp.starttls.required=true
+spring.mail.properties.mail.smtp.connectiontimeout=10000
+spring.mail.properties.mail.smtp.timeout=10000
+spring.mail.properties.mail.smtp.writetimeout=10000
+spring.mail.properties.mail.smtp.ssl.trust=smtp.gmail.com
+
+# Debug mail khi can
+logging.level.org.springframework.mail=DEBUG
+
+# --- Google OAuth2 ---
+spring.security.oauth2.client.registration.google.client-id=YOUR_GOOGLE_OAUTH2_CLIENT_ID
+spring.security.oauth2.client.registration.google.client-secret=YOUR_GOOGLE_OAUTH2_CLIENT_SECRET
+spring.security.oauth2.client.registration.google.scope=openid,profile,email
+spring.security.oauth2.client.registration.google.redirect-uri={baseUrl}/login/oauth2/code/{registrationId}
+
+# Frontend URL (for CORS)
+app.frontend.url=http://localhost:3000
+
+# OTP & Cleanup config
+app.auth.otp.ttl-seconds=30
+app.auth.cleanup.unverified.duration=PT1M
+
+# --- AI APIs ---
+ai.youtube.key=YOUR_YOUTUBE_API_KEY
+ai.youtube.regionCode=VN
+ai.gemini.key=YOUR_GEMINI_API_KEY
+ai.gemini.model=gemini-2.0-flash-exp

@@ -199,3 +199,6 @@ README.html
 *.iml
 .idea
 .exercism
+# Configuration files with secrets
+src/main/resources/application.properties
+src/main/resources/application-*.properties
