@@ -13,4 +13,5 @@ public interface OrderService {
     ResponseEntity<?> changeStatus(Integer id, Map<String, Object> payload);
     ResponseEntity<?> createTransaction(Map<String, Object> body, User current);
     ResponseEntity<?> createGuestTableOrder(GuestOrderController.GuestOrderRequest req);
+    ResponseEntity<?> validateProducts(Map<String, Object> body);
 }

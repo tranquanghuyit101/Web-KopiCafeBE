@@ -75,6 +75,7 @@ public class ProductController {
 			m.put("name", p.getName());
 			m.put("img", p.getImgUrl());
 			m.put("price", p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO);
+			m.put("stock", p.getStockQty());
 			m.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
 			items.add(m);
 		}
@@ -100,7 +101,8 @@ public class ProductController {
 		item.put("name", p.getName());
 		item.put("img", p.getImgUrl());
 		item.put("price", p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO);
-	item.put("desc", p.getDescription());
+		item.put("stock", p.getStockQty());
+	  item.put("desc", p.getDescription());
 		item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
 		return Map.of("data", List.of(item));
 	}

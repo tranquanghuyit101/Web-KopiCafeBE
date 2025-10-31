@@ -32,4 +32,10 @@ public class Category {
 	@EqualsAndHashCode.Exclude
 	@Builder.Default
 	private List<Product> products = new ArrayList<>();
+    // ✅ Constructor để seed dữ liệu nhanh trong DataInit
+    public Category(String name, boolean active, int displayOrder) {
+        this.name = name;
+        this.active = active;
+        this.displayOrder = displayOrder;
+    }
 } 

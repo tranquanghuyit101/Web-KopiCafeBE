@@ -176,6 +176,33 @@ public class OrderServiceImpl implements OrderService {
             return ResponseEntity.badRequest().body(Map.of("message", "Invalid status"));
         }
         OrderEntity order = orderRepository.findById(id).orElseThrow();
+        String previousStatus = order.getStatus();
+        // If moving to COMPLETED from a non-COMPLETED status: validate stock and deduct now
+        if (Objects.equals(status, "COMPLETED") && !Objects.equals(previousStatus, "COMPLETED")) {
+            if (order.getOrderDetails() != null) {
+                // Validate
+                for (OrderDetail d : order.getOrderDetails()) {
+                    Product prod = d.getProduct();
+                    Integer qty = d.getQuantity();
+                    if (prod != null && prod.getStockQty() != null) {
+                        if (prod.getStockQty() < qty) {
+                            return ResponseEntity.badRequest().body(Map.of(
+                                    "message", "Sản phẩm " + (prod.getName() == null ? "" : prod.getName()) + " không đủ số lượng trong kho!"
+                            ));
+                        }
+                    }
+                }
+                // Deduct
+                for (OrderDetail d : order.getOrderDetails()) {
+                    Product prod = d.getProduct();
+                    Integer qty = d.getQuantity();
+                    if (prod != null && prod.getStockQty() != null) {
+                        prod.setStockQty(prod.getStockQty() - qty);
+                        productRepository.save(prod);
+                    }
+                }
+            }
+        }
         order.setStatus(status);
         order.setUpdatedAt(java.time.LocalDateTime.now());
         // Update payment status in tandem
@@ -216,6 +243,17 @@ public class OrderServiceImpl implements OrderService {
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<OrderDetail> details = new ArrayList<>();
+        // 1. Kiểm tra tồn kho cho từng sản phẩm
+        for (Map<String, Object> p : products) {
+            Integer productId = Integer.valueOf(String.valueOf(p.get("product_id")));
+            Integer qty = Integer.valueOf(String.valueOf(p.getOrDefault("qty", 1)));
+            Product prod = productRepository.findById(productId).orElseThrow();
+            if (prod.getStockQty() < qty) {
+                return ResponseEntity.badRequest().body(Map.of("message",
+                    "Sản phẩm " + prod.getName() + " không đủ số lượng trong kho!"));
+            }
+        }
+        // 2. Tạo chi tiết order (KHÔNG trừ tồn kho ở bước confirm)
         for (Map<String, Object> p : products) {
             Integer productId = Integer.valueOf(String.valueOf(p.get("product_id")));
             Integer qty = Integer.valueOf(String.valueOf(p.getOrDefault("qty", 1)));
@@ -223,11 +261,11 @@ public class OrderServiceImpl implements OrderService {
             BigDecimal unit = prod.getPrice();
             subtotal = subtotal.add(unit.multiply(BigDecimal.valueOf(qty)));
             OrderDetail d = OrderDetail.builder()
-                    .product(prod)
-                    .productNameSnapshot(prod.getName())
-                    .unitPrice(unit)
-                    .quantity(qty)
-                    .build();
+                .product(prod)
+                .productNameSnapshot(prod.getName())
+                .unitPrice(unit)
+                .quantity(qty)
+                .build();
             details.add(d);
         }
 
@@ -325,6 +363,17 @@ public class OrderServiceImpl implements OrderService {
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<OrderDetail> details = new ArrayList<>();
+        // 1. Kiểm tra tồn kho cho từng sản phẩm guest
+        for (GuestOrderController.GuestOrderItem gi : items) {
+            Integer productId = gi.product_id();
+            Integer qty = gi.qty() == null ? 1 : gi.qty();
+            Product prod = productRepository.findById(productId).orElseThrow();
+            if (prod.getStockQty() < qty) {
+                return ResponseEntity.badRequest().body(Map.of("message",
+                    "Sản phẩm " + prod.getName() + " không đủ số lượng trong kho!"));
+            }
+        }
+        // 2. Tạo chi tiết order (KHÔNG trừ tồn kho ở bước confirm)
         for (GuestOrderController.GuestOrderItem gi : items) {
             Integer productId = gi.product_id();
             Integer qty = gi.qty() == null ? 1 : gi.qty();
@@ -332,11 +381,11 @@ public class OrderServiceImpl implements OrderService {
             BigDecimal unit = prod.getPrice();
             subtotal = subtotal.add(unit.multiply(BigDecimal.valueOf(qty)));
             details.add(OrderDetail.builder()
-                    .product(prod)
-                    .productNameSnapshot(prod.getName())
-                    .unitPrice(unit)
-                    .quantity(qty)
-                    .build());
+                .product(prod)
+                .productNameSnapshot(prod.getName())
+                .unitPrice(unit)
+                .quantity(qty)
+                .build());
         }
 
         OrderEntity order = OrderEntity.builder()
@@ -375,5 +424,40 @@ public class OrderServiceImpl implements OrderService {
 
     private BigDecimal defaultBigDecimal(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
+    }
+    @Override
+    public ResponseEntity<?> validateProducts(Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> products = (List<Map<String, Object>>) body.getOrDefault("products", List.of());
+        if (products.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "No products"));
+        }
+
+        List<Map<String, Object>> insufficient = new ArrayList<>();
+        for (Map<String, Object> p : products) {
+            Integer productId = Integer.valueOf(String.valueOf(p.get("product_id")));
+            Integer qty = Integer.valueOf(String.valueOf(p.getOrDefault("qty", 1)));
+            Product prod = productRepository.findById(productId).orElse(null);
+            if (prod == null) {
+                insufficient.add(Map.of("product_id", productId, "reason", "not_found"));
+                continue;
+            }
+            if (prod.getStockQty() == null || prod.getStockQty() < qty) {
+                insufficient.add(Map.of(
+                        "product_id", productId,
+                        "name", prod.getName(),
+                        "requested", qty,
+                        "available", prod.getStockQty() == null ? 0 : prod.getStockQty()
+                ));
+            }
+        }
+
+        if (!insufficient.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Insufficient stock",
+                    "errors", insufficient
+            ));
+        }
+        return ResponseEntity.ok(Map.of("message", "OK"));
     }
 }

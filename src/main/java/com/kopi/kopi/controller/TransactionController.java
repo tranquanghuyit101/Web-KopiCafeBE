@@ -62,6 +62,11 @@ public class TransactionController {
         return orderService.createTransaction(body, current);
     }
 
+    @PostMapping("/orders/validate")
+    public ResponseEntity<?> validateProducts(@RequestBody Map<String, Object> body) {
+        return orderService.validateProducts(body);
+    }
+
     private BigDecimal defaultBigDecimal(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
     }
