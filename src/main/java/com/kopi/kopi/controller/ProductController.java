@@ -102,7 +102,7 @@ public class ProductController {
 		item.put("img", p.getImgUrl());
 		item.put("price", p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO);
 		item.put("stock", p.getStockQty());
-		item.put("desc", "");
+	  item.put("desc", p.getDescription());
 		item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
 		return Map.of("data", List.of(item));
 	}
@@ -110,38 +110,72 @@ public class ProductController {
 	@PostMapping
 	@PreAuthorize("hasRole('ADMIN')")
 	public ResponseEntity<?> create(
-		@RequestPart(value = "image", required = false) MultipartFile image,
-		@RequestPart("name") String name,
-		@RequestPart("category_id") Integer categoryId,
-		@RequestPart("desc") String desc,
-		@RequestPart("price") BigDecimal price
+		@RequestParam(value = "image", required = false) MultipartFile image,
+		@RequestParam(value = "img", required = false) String imgUrl,
+		@RequestParam("name") String name,
+		@RequestParam("category_id") Integer categoryId,
+		@RequestParam(value = "desc", required = false) String desc,
+		@RequestParam("price") BigDecimal price
 	) {
 		Category category = categoryRepository.findById(categoryId).orElseThrow();
 		Product p = new Product();
 		p.setName(name);
 		p.setCategory(category);
 		p.setPrice(price);
+		// Nếu có thêm trường img thì cập nhật ở đây cho đầy đủ
+		if (imgUrl != null && !imgUrl.isBlank()) {
+			p.setImgUrl(imgUrl);
+		}
+		p.setDescription(desc);
 		productRepository.save(p);
-		return ResponseEntity.ok(Map.of("message", "created"));
+
+		Map<String, Object> item = new HashMap<>();
+		item.put("id", p.getProductId());
+		item.put("name", p.getName());
+		item.put("img", p.getImgUrl());
+		item.put("price", p.getPrice());
+		item.put("desc", p.getDescription());
+		item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
+		return ResponseEntity.ok(Map.of("data", List.of(item)));
 	}
 
 	@PatchMapping("/{id}")
 	@PreAuthorize("hasRole('ADMIN')")
-	public ResponseEntity<?> update(
-		@PathVariable("id") Integer id,
-		@RequestPart(value = "image", required = false) MultipartFile image,
-		@RequestPart("name") String name,
-		@RequestPart("category_id") Integer categoryId,
-		@RequestPart("desc") String desc,
-		@RequestPart("price") BigDecimal price
-	) {
+    public ResponseEntity<?> update(
+        @PathVariable("id") Integer id,
+        @RequestParam(value = "image", required = false) MultipartFile image,
+        @RequestParam(value = "img", required = false) String imgUrl,
+        @RequestParam(value = "name", required = false) String name,
+        @RequestParam(value = "category_id", required = false) Integer categoryId,
+        @RequestParam(value = "desc", required = false) String desc,
+        @RequestParam(value = "price", required = false) BigDecimal price
+    ) {
 		Product p = productRepository.findById(id).orElseThrow();
-		Category category = categoryRepository.findById(categoryId).orElseThrow();
-		p.setName(name);
-		p.setCategory(category);
-		p.setPrice(price);
+        if (name != null && !name.isBlank()) {
+            p.setName(name);
+        }
+        if (categoryId != null) {
+            Category category = categoryRepository.findById(categoryId).orElseThrow();
+            p.setCategory(category);
+        }
+        if (price != null) {
+            p.setPrice(price);
+        }
+		// Nếu có thêm trường img thì cập nhật ở đây cho đầy đủ
+		if (imgUrl != null && !imgUrl.isBlank()) {
+			p.setImgUrl(imgUrl);
+		}
+		p.setDescription(desc);
 		productRepository.save(p);
-		return ResponseEntity.ok(Map.of("message", "updated"));
+
+		Map<String, Object> item = new HashMap<>();
+		item.put("id", p.getProductId());
+		item.put("name", p.getName());
+		item.put("img", p.getImgUrl());
+		item.put("price", p.getPrice());
+		item.put("desc", p.getDescription());
+		item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
+		return ResponseEntity.ok(Map.of("data", List.of(item)));
 	}
 
 	@DeleteMapping("/{id}")

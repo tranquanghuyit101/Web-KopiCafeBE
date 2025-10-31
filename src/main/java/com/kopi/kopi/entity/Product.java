@@ -31,14 +31,17 @@ public class Product {
     @Column(name = "img_url", length = 255)
     private String imgUrl;
 
+	  @Column(name = "description")
+	  private String description;
+
     @Column(name = "sku", length = 50)
     private String sku;
 
     @Column(name = "price", nullable = false, precision = 18, scale = 2)
     private BigDecimal price;
 
-    @Column(name = "is_available", nullable = false)
-    private Boolean available;
+	  @Column(name = "is_available", nullable = false)
+	  private Boolean available;
 
     @Column(name = "stock_qty", nullable = false)
     private Integer stockQty;
