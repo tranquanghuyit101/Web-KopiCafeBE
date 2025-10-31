@@ -68,17 +68,16 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
         System.out.println("[AiSuggest] Step 1: Calling Gemini to find hot trend dishes in Vietnam...");
         List<GeminiClient.TrendingDishInfo> trendingDishes;
         try {
-            // Tăng số lượng món yêu cầu (để có nhiều lựa chọn hơn)
-            int dishCount = Math.max(10, max / 3);  // Tăng từ max/10 lên max/3, min 10 món
-            System.out.println("[AiSuggest] Requesting " + dishCount + " trending dishes from Gemini...");
-            trendingDishes = gemini.findHotTrendDishes(days, dishCount);
+            // Yêu cầu Gemini tìm đúng số món user muốn (không giới hạn nữa)
+            System.out.println("[AiSuggest] Requesting " + max + " trending dishes from Gemini...");
+            trendingDishes = gemini.findHotTrendDishes(days, max);
             System.out.println("[AiSuggest] Gemini returned " + trendingDishes.size() + " trending dishes");
             for (GeminiClient.TrendingDishInfo dish : trendingDishes) {
                 System.out.println("  - " + dish.getName() + " (trending score: " + dish.getTrendingScore() + ")");
             }
         } catch (Exception e) {
             System.err.println("[AiSuggest] Gemini failed: " + e.getMessage() + ". Using fallback dishes...");
-            trendingDishes = gemini.getFallbackTrendingDishes(Math.max(5, max / 10));
+            trendingDishes = gemini.getFallbackTrendingDishes(max);
         }
 
         if (trendingDishes.isEmpty()) {
@@ -185,36 +184,42 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
             String dishName = entry.getKey();
             List<VideoItem> videos = entry.getValue();
             
-            double topScore = 0.0;
-            double avgScore = 0.0;
+            // Tìm Gemini trendingScore và recipe cho món này
+            double geminiTrendingScore = 5.0; // Default nếu không tìm thấy
             String recipe = "";
+            for (GeminiClient.TrendingDishInfo dishInfo : trendingDishes) {
+                if (dishInfo.getName().equals(dishName)) {
+                    geminiTrendingScore = dishInfo.getTrendingScore();
+                    recipe = dishInfo.getBasicRecipe();
+                    break;
+                }
+            }
+            
+            double topScore = geminiTrendingScore * 10; // Convert trendingScore (1-10) → topScore (10-100)
+            double avgScore = 0.0;
             
             if (!videos.isEmpty()) {
                 // Sort theo viral score
                 videos.sort(Comparator.comparing(VideoItem::getViralScore, Comparator.nullsLast(Double::compareTo)).reversed());
                 
-                topScore = Optional.ofNullable(videos.get(0).getViralScore()).orElse(0.0);
+                double videoTopScore = Optional.ofNullable(videos.get(0).getViralScore()).orElse(0.0);
                 avgScore = videos.stream()
                         .mapToDouble(v -> Optional.ofNullable(v.getViralScore()).orElse(0.0))
                         .average()
                         .orElse(0.0);
                 
-                // Lấy công thức từ video đầu tiên
-                recipe = videos.get(0).getBasicRecipe();
-            }
-            
-            // Nếu không có recipe từ video, lấy từ Gemini
-            if (recipe == null || recipe.isBlank()) {
-                // Tìm từ Gemini info
-                for (GeminiClient.TrendingDishInfo dishInfo : trendingDishes) {
-                    if (dishInfo.getName().equals(dishName)) {
-                        recipe = dishInfo.getBasicRecipe();
-                        break;
-                    }
+                // Ưu tiên videoTopScore nếu có video
+                topScore = Math.max(topScore, videoTopScore);
+                
+                // Lấy công thức từ video đầu tiên (nếu có)
+                String videoRecipe = videos.get(0).getBasicRecipe();
+                if (videoRecipe != null && !videoRecipe.isBlank()) {
+                    recipe = videoRecipe;
                 }
             }
             
-            double rating = calculateRating(avgScore, videos.size());
+            // Tính rating (dùng Gemini trendingScore khi không có video)
+            double rating = calculateRating(avgScore, videos.size(), geminiTrendingScore);
             
             groups.add(DishGroup.builder()
                     .key(keyOf(dishName))
@@ -227,13 +232,11 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
                     .build());
         }
 
-        // Sort theo topScore
+        // Sort theo topScore (độ hot từ cao xuống thấp)
         groups.sort(Comparator.comparing(DishGroup::getTopScore).reversed());
         
-        // Giới hạn số lượng món
-        if (groups.size() > max / 5) {
-            groups = groups.subList(0, Math.min(max / 5, groups.size()));
-        }
+        // Không giới hạn output nữa - Gemini tìm được bao nhiêu thì trả về hết
+        // (đã được giới hạn bởi max ở input Gemini rồi)
 
         long tookMs = System.currentTimeMillis() - t0;
         int totalVideos = groups.stream().mapToInt(DishGroup::getTotalVideos).sum();
@@ -261,6 +264,123 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
             String title = (v.getTitle() != null ? v.getTitle() : "").toLowerCase();
             String desc = (v.getDescription() != null ? v.getDescription() : "").toLowerCase();
             String text = title + " " + desc;
+            
+            // ===== BƯỚC 0: REJECT VIDEO NƯỚC NGOÀI =====
+            
+            // REJECT: Video có nhiều từ tiếng Tây Ban Nha (POV, colaboras, lugar, bebidas, sueños, etc.)
+            String[] spanishWords = {"colaboras", "lugar", "favorito", "bebidas", "sueños", "prepara", "cremoso", "fácil", "para", "con", "las", "tus", "más", "del", "una"};
+            int spanishCount = 0;
+            for (String word : spanishWords) {
+                if (title.contains(word)) spanishCount++;
+            }
+            if (spanishCount >= 2) {
+                System.out.println("[Filter] REJECTED (Spanish language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có chữ Thái (เมนู, แคลอรี, ต่ำด้วย, etc.)
+            if (title.matches(".*[\\u0E00-\\u0E7F]+.*")) {
+                System.out.println("[Filter] REJECTED (Thai language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có chữ Hàn (한국어)
+            if (title.matches(".*[\\uAC00-\\uD7A3]+.*")) {
+                System.out.println("[Filter] REJECTED (Korean language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có chữ Nhật (ひらがな, カタカナ, 漢字 Nhật)
+            if (title.matches(".*[\\u3040-\\u309F\\u30A0-\\u30FF]+.*")) {
+                System.out.println("[Filter] REJECTED (Japanese language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có chữ Trung giản thể/phồn thể (quá nhiều chữ Hán liên tiếp)
+            // Cho phép 1-2 chữ Hán (có thể là tên món), nhưng reject nếu >3 chữ Hán liên tiếp
+            String titleOriginal = (v.getTitle() != null ? v.getTitle() : "");
+            long chineseCharCount = titleOriginal.chars().filter(c -> c >= 0x4E00 && c <= 0x9FFF).count();
+            if (chineseCharCount > 5) {  // Nhiều hơn 5 chữ Hán → có thể là video Trung Quốc
+                System.out.println("[Filter] REJECTED (Chinese language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có chữ Ả Rập (العربية)
+            if (title.matches(".*[\\u0600-\\u06FF]+.*")) {
+                System.out.println("[Filter] REJECTED (Arabic language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có chữ Nga (Кириллица)
+            if (title.matches(".*[\\u0400-\\u04FF]+.*")) {
+                System.out.println("[Filter] REJECTED (Russian language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có nhiều từ tiếng Pháp
+            String[] frenchWords = {"pour", "avec", "dans", "cette", "très", "bien", "comment", "faire", "recette"};
+            int frenchCount = 0;
+            for (String word : frenchWords) {
+                if (title.contains(word)) frenchCount++;
+            }
+            if (frenchCount >= 2) {
+                System.out.println("[Filter] REJECTED (French language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có nhiều từ tiếng Đức
+            String[] germanWords = {"und", "mit", "für", "der", "die", "das", "eine", "einen", "wie", "machen"};
+            int germanCount = 0;
+            for (String word : germanWords) {
+                if (title.contains(word)) germanCount++;
+            }
+            if (germanCount >= 2) {
+                System.out.println("[Filter] REJECTED (German language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có nhiều từ tiếng Indonesia
+            String[] indonesianWords = {"yang", "dan", "untuk", "dengan", "dari", "ini", "itu", "adalah", "cara", "membuat"};
+            int indonesianCount = 0;
+            for (String word : indonesianWords) {
+                if (title.contains(word)) indonesianCount++;
+            }
+            if (indonesianCount >= 2) {
+                System.out.println("[Filter] REJECTED (Indonesian language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video có nhiều từ tiếng Bồ Đào Nha
+            String[] portugueseWords = {"para", "com", "como", "fazer", "receita", "mais", "você", "seu", "sua"};
+            int portugueseCount = 0;
+            for (String word : portugueseWords) {
+                if (title.contains(word)) portugueseCount++;
+            }
+            if (portugueseCount >= 2) {
+                System.out.println("[Filter] REJECTED (Portuguese language): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video POV style không liên quan (POV: colaboras, creates drinks, etc.)
+            if (title.startsWith("pov:") && !title.contains("recipe") && !title.contains("cách làm") && 
+                !title.contains("how to") && !title.contains("hướng dẫn")) {
+                System.out.println("[Filter] REJECTED (POV style not recipe): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video về món ăn không phải đồ uống (bread, flour, cake, cookie, muffin)
+            boolean isFoodNotDrink = 
+                title.contains("bread") || title.contains("flour") || title.contains("cake") ||
+                title.contains("cookie") || title.contains("muffin") || title.contains("pancake") ||
+                title.contains("waffle") || title.contains("bánh mì") || title.contains("bánh bông lan") ||
+                title.contains("bánh quy") || title.contains("bánh ngọt");
+            
+            // CHỈ reject nếu KHÔNG đi kèm với đồ uống
+            if (isFoodNotDrink && !title.contains("coffee") && !title.contains("latte") && !title.contains("matcha") && 
+                !title.contains("cà phê") && !title.contains("trà") && !title.contains("drink")) {
+                System.out.println("[Filter] REJECTED (food not drink): " + v.getTitle());
+                return false;
+            }
             
             // ===== BƯỚC 1: REJECT các loại video CHẮC CHẮN không phải recipe =====
             
@@ -375,8 +495,15 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
      * @param videoCount số lượng video
      * @return rating từ 1.0 đến 5.0
      */
-    private double calculateRating(double avgScore, int videoCount) {
-        // Công thức:
+    private double calculateRating(double avgScore, int videoCount, double geminiTrendingScore) {
+        if (videoCount == 0) {
+            // Không có video → dùng Gemini trendingScore (1-10) chuyển sang rating (1-5)
+            // trendingScore 10 = 5 sao, trendingScore 2 = 1 sao
+            double rating = Math.max(1.0, Math.min(5.0, geminiTrendingScore / 2.0));
+            return Math.round(rating * 10.0) / 10.0;
+        }
+        
+        // Có video → dựa vào viral score và số lượng video
         // - Base rating từ viral score (0-4 sao)
         // - Bonus từ số lượng video (0-1 sao)
         
