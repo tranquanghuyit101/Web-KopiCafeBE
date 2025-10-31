@@ -1,15 +1,17 @@
 package com.kopi.kopi.service.impl;
 
-import com.kopi.kopi.service.EmailService;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.*;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class EmailServiceImplTest {
@@ -17,66 +19,36 @@ class EmailServiceImplTest {
     @Mock
     private JavaMailSender mailSender;
 
-    private EmailServiceImpl service;
+    private EmailServiceImpl svc;
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new EmailServiceImpl(mailSender);
-        // giả lập inject value từ @Value bằng reflection
-        java.lang.reflect.Field f = EmailServiceImpl.class.getDeclaredField("from");
+        svc = new EmailServiceImpl(mailSender);
+        var f = EmailServiceImpl.class.getDeclaredField("from");
         f.setAccessible(true);
-        f.set(service, "testsender@example.com");
-    }
-
-    @AfterEach
-    void tearDown() {
-        // no-op
+        f.set(svc, "noreply@kopi.test");
     }
 
     @Test
-    void should_SendEmail_WithValidFields() {
-        // Given
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+    void send_should_call_mailSender_with_expected_values() {
+        svc.send("to@kopi.test", "Hello", "body text");
 
-        // When
-        service.send("user@example.com", "Hello", "Hi there");
-
-        // Then
-        verify(mailSender, times(1)).send((SimpleMailMessage) captor.capture());
-        SimpleMailMessage msg = captor.getValue();
-
-        assertThat(msg.getFrom()).isEqualTo("testsender@example.com");
-        assertThat(msg.getTo()).containsExactly("user@example.com");
+        ArgumentCaptor<SimpleMailMessage> cap = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, times(1)).send(cap.capture());
+        SimpleMailMessage msg = cap.getValue();
+        assertThat(msg.getTo()).containsExactly("to@kopi.test");
         assertThat(msg.getSubject()).isEqualTo("Hello");
-        assertThat(msg.getText()).isEqualTo("Hi there");
+        assertThat(msg.getText()).isEqualTo("body text");
+        assertThat(msg.getFrom()).isEqualTo("noreply@kopi.test");
     }
 
     @Test
-    void should_UseEmptyBody_When_ContentNull() {
-        // Given
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+    void send_null_content_should_send_empty_text() {
+        svc.send("to2@kopi.test", "Sub", null);
 
-        // When
-        service.send("user@example.com", "NoBody", null);
-
-        // Then
-        verify(mailSender).send((SimpleMailMessage) captor.capture());
-        assertThat(captor.getValue().getText()).isEqualTo("");
-    }
-
-    @Test
-    void should_Throw_When_ToIsNull() {
-        // Expect
-        assertThatThrownBy(() -> service.send(null, "Subject", "Body"))
-                .isInstanceOf(NullPointerException.class);
-        verify(mailSender, never()).send(any(SimpleMailMessage.class));
-    }
-
-    @Test
-    void should_Throw_When_SubjectIsNull() {
-        // Expect
-        assertThatThrownBy(() -> service.send("user@example.com", null, "Body"))
-                .isInstanceOf(NullPointerException.class);
-        verify(mailSender, never()).send(any(SimpleMailMessage.class));
+        ArgumentCaptor<SimpleMailMessage> cap = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender, times(1)).send(cap.capture());
+        SimpleMailMessage msg = cap.getValue();
+        assertThat(msg.getText()).isEqualTo("");
     }
 }

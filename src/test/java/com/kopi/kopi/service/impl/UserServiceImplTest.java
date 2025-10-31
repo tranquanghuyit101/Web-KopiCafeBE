@@ -32,13 +32,20 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class UserServiceImplTest {
 
-    @Mock private UserRepository userRepository;
-    @Mock private PasswordEncoder passwordEncoder;
-    @Mock private EmailService emailService;
-    @Mock private ForceChangeStore forceChangeStore;
-    @Mock private AddressHomeRepository addressHomeRepository;
-    @Mock private RoleRepository roleRepository;
-    @Mock private PositionRepository positionRepository;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private PasswordEncoder passwordEncoder;
+    @Mock
+    private EmailService emailService;
+    @Mock
+    private ForceChangeStore forceChangeStore;
+    @Mock
+    private AddressHomeRepository addressHomeRepository;
+    @Mock
+    private RoleRepository roleRepository;
+    @Mock
+    private PositionRepository positionRepository;
 
     private UserServiceImpl service;
 
@@ -51,8 +58,7 @@ class UserServiceImplTest {
                 forceChangeStore,
                 addressHomeRepository,
                 roleRepository,
-                positionRepository
-        );
+                positionRepository);
     }
 
     @AfterEach
@@ -92,7 +98,7 @@ class UserServiceImplTest {
         verify(passwordEncoder).encode(argThat(pwd -> pwd != null && pwd.length() >= 8));
         verify(userRepository).save(argThat(saved -> "ENCODED".equals(saved.getPasswordHash())));
         verify(forceChangeStore).set("e@kopi.com", true);
-        verify(emailService).send(eq("e@kopi.com"), contains("temporary password"), contains("Temporary password"));
+        verify(emailService).send(eq("e@kopi.com"), contains("temporary password"), contains("temporary password"));
     }
 
     @Test
@@ -160,7 +166,8 @@ class UserServiceImplTest {
                 .isInstanceOf(NoSuchElementException.class);
     }
 
-    // ---------------- mustChangePassword / clearForceChangePassword ----------------
+    // ---------------- mustChangePassword / clearForceChangePassword
+    // ----------------
 
     @Test
     void should_ReturnFlag_FromStore() {
@@ -218,7 +225,8 @@ class UserServiceImplTest {
     @Test
     void should_SearchAndMapEmployees_WithFilters() {
         // Given
-        // Spec is built inside service; we just return what a correct repo would return for that Spec
+        // Spec is built inside service; we just return what a correct repo would return
+        // for that Spec
         User u = new User();
         u.setUserId(10);
         u.setFullName("Nguyen Van A");

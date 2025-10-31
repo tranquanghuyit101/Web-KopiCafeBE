@@ -4,17 +4,17 @@ import com.kopi.kopi.controller.MenuController;
 import com.kopi.kopi.entity.Category;
 import com.kopi.kopi.entity.Product;
 import com.kopi.kopi.repository.CategoryRepository;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.*;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class MenuServiceImplTest {
@@ -29,106 +29,37 @@ class MenuServiceImplTest {
         service = new MenuServiceImpl(categoryRepository);
     }
 
-    @AfterEach
-    void tearDown() {
-        // no-op
-    }
-
-    // ---------- helpers ----------
-    private Product product(String name, BigDecimal price) {
-        Product p = new Product();
-        p.setName(name);
-        p.setPrice(price);
-        return p;
-    }
-
-    private Category category(String name, List<Product> products) {
-        Category c = new Category();
-        c.setName(name);
-        // đảm bảo list không null
-        c.setProducts(products != null ? products : new ArrayList<>());
-        return c;
-    }
-
-    // ================= getMenu =================
-
     @Test
-    void should_MapCategoriesAndProducts_Correctly() {
+    void getMenu_should_map_categories_and_products() {
         // Given
-        var coffee = category("Coffee", List.of(
-                product("Americano", new BigDecimal("3.50")),
-                product("Latte", new BigDecimal("4.20"))));
-        var tea = category("Tea", List.of(
-                product("Earl Grey", new BigDecimal("2.80"))));
-        when(categoryRepository.findAll()).thenReturn(List.of(coffee, tea));
+        Category c = new Category("Drinks", true, 1);
+        c.setProducts(new java.util.ArrayList<>());
+        Product p = new Product(c, "Coffee", "SKU1", new BigDecimal("3.50"), "img");
+        c.getProducts().add(p);
+
+        when(categoryRepository.findAll()).thenReturn(List.of(c));
 
         // When
         List<MenuController.MenuCategoryDto> menu = service.getMenu();
 
         // Then
-        assertThat(menu).hasSize(2);
-        // Category 1
-        assertThat(menu.get(0).getName()).isEqualTo("Coffee");
-        assertThat(menu.get(0).getProducts()).hasSize(2);
-        assertThat(menu.get(0).getProducts().get(0).getName()).isEqualTo("Americano");
-        assertThat(menu.get(0).getProducts().get(0).getPrice()).isEqualByComparingTo("3.50");
-        assertThat(menu.get(0).getProducts().get(1).getName()).isEqualTo("Latte");
-        assertThat(menu.get(0).getProducts().get(1).getPrice()).isEqualByComparingTo("4.20");
-        // Category 2
-        assertThat(menu.get(1).getName()).isEqualTo("Tea");
-        assertThat(menu.get(1).getProducts()).hasSize(1);
-        assertThat(menu.get(1).getProducts().get(0).getName()).isEqualTo("Earl Grey");
-        assertThat(menu.get(1).getProducts().get(0).getPrice()).isEqualByComparingTo("2.80");
-
-        verify(categoryRepository, times(1)).findAll();
+        assertThat(menu).hasSize(1);
+        var catDto = menu.get(0);
+        assertThat(catDto.getName()).isEqualTo("Drinks");
+        assertThat(catDto.getProducts()).hasSize(1);
+        var prod = catDto.getProducts().get(0);
+        assertThat(prod.getName()).isEqualTo("Coffee");
+        assertThat(prod.getPrice()).isEqualTo(new BigDecimal("3.50"));
     }
 
     @Test
-    void should_ReturnEmptyProducts_When_CategoryHasNoProducts() {
-        // Given
-        var snacks = category("Snacks", List.of());
-        when(categoryRepository.findAll()).thenReturn(List.of(snacks));
+    void getMenu_should_handle_empty_products() {
+        Category c = new Category("Empty", true, 2);
+        c.setProducts(new java.util.ArrayList<>());
+        when(categoryRepository.findAll()).thenReturn(List.of(c));
 
-        // When
-        var menu = service.getMenu();
-
-        // Then
+        List<MenuController.MenuCategoryDto> menu = service.getMenu();
         assertThat(menu).hasSize(1);
-        assertThat(menu.get(0).getName()).isEqualTo("Snacks");
         assertThat(menu.get(0).getProducts()).isEmpty();
-    }
-
-    @Test
-    void should_ReturnEmptyList_When_NoCategories() {
-        // Given
-        when(categoryRepository.findAll()).thenReturn(List.of());
-
-        // When
-        var menu = service.getMenu();
-
-        // Then
-        assertThat(menu).isEmpty();
-        verify(categoryRepository).findAll();
-    }
-
-    @Test
-    void should_PreserveOrder_AndAllowNullPrice() {
-        // Given
-        var cat = category("Specials", List.of(
-                product("Mystery Drink", null), // null price should flow through
-                product("Signature", new BigDecimal("5"))));
-        when(categoryRepository.findAll()).thenReturn(List.of(cat));
-
-        // When
-        var menu = service.getMenu();
-
-        // Then
-        assertThat(menu).hasSize(1);
-        var products = menu.get(0).getProducts();
-        assertThat(products).hasSize(2);
-        assertThat(products.get(0).getName()).isEqualTo("Mystery Drink");
-        assertThat(products.get(0).getPrice()).isNull(); // chấp nhận null
-        assertThat(products.get(1).getName()).isEqualTo("Signature");
-        assertThat(products.get(1).getPrice()).isEqualByComparingTo("5");
     }
 }

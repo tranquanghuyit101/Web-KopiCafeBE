@@ -20,8 +20,10 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class TableServiceImplTest {
 
-    @Mock private DiningTableRepository diningTableRepository;
-    @Mock private OrderRepository orderRepository;
+    @Mock
+    private DiningTableRepository diningTableRepository;
+    @Mock
+    private OrderRepository orderRepository;
 
     private TableServiceImpl service;
 
@@ -166,15 +168,15 @@ class TableServiceImplTest {
     void should_ListAll_When_StatusBlank() {
         // Given
         Pageable pageable = PageRequest.of(0, 10);
-        Page<DiningTable> pg = new PageImpl<>(List.of(table(1,10,"A","AVAILABLE")), pageable, 1);
+        Page<DiningTable> pg = new PageImpl<>(List.of(table(1, 10, "A", "AVAILABLE")), pageable, 1);
         when(diningTableRepository.findAll(any(Pageable.class))).thenReturn(pg);
 
         // When
-        Map<String,Object> res = service.list(1, 10, "");
+        Map<String, Object> res = service.list(1, 10, "");
 
         // Then
         verify(diningTableRepository).findAll(any(Pageable.class));
-        Map<String,Object> meta = (Map<String,Object>) res.get("meta");
+        Map<String, Object> meta = (Map<String, Object>) res.get("meta");
         assertThat(meta.get("currentPage")).isEqualTo(1);
         assertThat(meta.get("totalPage")).isEqualTo(1);
         assertThat(meta.get("prev")).isEqualTo(false);
@@ -185,11 +187,11 @@ class TableServiceImplTest {
     void should_ListByStatus_When_StatusProvided() {
         // Given
         Pageable pageable = PageRequest.of(0, 5);
-        Page<DiningTable> pg = new PageImpl<>(List.of(table(2,11,"B","OCCUPIED")), pageable, 1);
+        Page<DiningTable> pg = new PageImpl<>(List.of(table(2, 11, "B", "OCCUPIED")), pageable, 1);
         when(diningTableRepository.findByStatus(eq("OCCUPIED"), any(Pageable.class))).thenReturn(pg);
 
         // When
-        Map<String,Object> res = service.list(1, 5, "OCCUPIED");
+        Map<String, Object> res = service.list(1, 5, "OCCUPIED");
 
         // Then
         verify(diningTableRepository).findByStatus(eq("OCCUPIED"), any(Pageable.class));
@@ -199,7 +201,7 @@ class TableServiceImplTest {
     @Test
     void should_NormalizePageAndLimit() {
         // Given
-        Page<DiningTable> pg = new PageImpl<>(List.of(), PageRequest.of(0,1), 0);
+        Page<DiningTable> pg = new PageImpl<>(List.of(), PageRequest.of(0, 1), 0);
         when(diningTableRepository.findAll(any(Pageable.class))).thenReturn(pg);
 
         // When
@@ -217,7 +219,7 @@ class TableServiceImplTest {
     @Test
     void should_Create_WithQrToken_AndDefaultStatusAvailable() {
         // Given
-        Map<String,Object> body = new HashMap<>();
+        Map<String, Object> body = new HashMap<>();
         body.put("number", 12);
         body.put("name", "Vip 1");
         // no status -> default AVAILABLE
@@ -232,8 +234,8 @@ class TableServiceImplTest {
         ResponseEntity<?> resp = service.create(body);
 
         // Then
-        Map<?,?> out = (Map<?,?>) ((Map<?,?>) resp.getBody()).get("data");
-        DiningTable saved = (DiningTable) ((Map<?,?>) resp.getBody()).get("data"); // service trả t trực tiếp
+        DiningTable saved = (DiningTable) ((Map<?, ?>) resp.getBody()).get("data"); // service returns the DiningTable
+                                                                                    // directly
         assertThat(saved.getTableId()).isEqualTo(99);
         assertThat(saved.getStatus()).isEqualTo("AVAILABLE");
         assertThat(saved.getQrToken()).matches("^[0-9a-f]{32}$");
@@ -245,14 +247,14 @@ class TableServiceImplTest {
     @Test
     void should_ParseNumber_When_NumberIsString() {
         // Given
-        Map<String,Object> body = Map.of("number", "15", "status", "OCCUPIED");
+        Map<String, Object> body = Map.of("number", "15", "status", "OCCUPIED");
         when(diningTableRepository.save(any(DiningTable.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // When
         ResponseEntity<?> resp = service.create(body);
 
         // Then
-        DiningTable saved = (DiningTable) ((Map<?,?>) resp.getBody()).get("data");
+        DiningTable saved = (DiningTable) ((Map<?, ?>) resp.getBody()).get("data");
         assertThat(saved.getNumber()).isEqualTo(15);
         assertThat(saved.getStatus()).isEqualTo("OCCUPIED");
     }
@@ -265,7 +267,7 @@ class TableServiceImplTest {
         DiningTable t = table(5, 10, "A", "AVAILABLE");
         when(diningTableRepository.findById(5)).thenReturn(Optional.of(t));
 
-        Map<String,Object> body = new HashMap<>();
+        Map<String, Object> body = new HashMap<>();
         body.put("number", 20);
         body.put("name", "New");
         body.put("status", "OCCUPIED");
@@ -275,7 +277,7 @@ class TableServiceImplTest {
 
         // Then
         verify(diningTableRepository).save(t);
-        DiningTable patched = (DiningTable) ((Map<?,?>) resp.getBody()).get("data");
+        DiningTable patched = (DiningTable) ((Map<?, ?>) resp.getBody()).get("data");
         assertThat(patched.getNumber()).isEqualTo(20);
         assertThat(patched.getName()).isEqualTo("New");
         assertThat(patched.getStatus()).isEqualTo("OCCUPIED");
@@ -288,7 +290,7 @@ class TableServiceImplTest {
         DiningTable t = table(6, 11, "Old", "AVAILABLE");
         when(diningTableRepository.findById(6)).thenReturn(Optional.of(t));
 
-        Map<String,Object> body = new HashMap<>();
+        Map<String, Object> body = new HashMap<>();
         body.put("name", null);
 
         // When
@@ -332,7 +334,7 @@ class TableServiceImplTest {
 
         // Then
         verify(diningTableRepository, times(1)).deleteById(10);
-        assertThat(((Map<?,?>) resp.getBody()).get("message")).isEqualTo("OK");
+        assertThat(((Map<?, ?>) resp.getBody()).get("message")).isEqualTo("OK");
     }
 
     // ================= rotateQr =================
@@ -381,7 +383,7 @@ class TableServiceImplTest {
 
         // Then
         assertThat(resp.getStatusCodeValue()).isEqualTo(200);
-        Map<String,Object> data = (Map<String,Object>) ((Map<?,?>) resp.getBody()).get("data");
+        Map<String, Object> data = (Map<String, Object>) ((Map<?, ?>) resp.getBody()).get("data");
         assertThat(data.get("id")).isEqualTo(2);
         assertThat(data.get("number")).isEqualTo(22);
         assertThat(data.get("status")).isEqualTo("OCCUPIED");

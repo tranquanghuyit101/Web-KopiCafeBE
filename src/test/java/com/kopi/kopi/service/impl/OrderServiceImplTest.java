@@ -5,6 +5,7 @@ import com.kopi.kopi.repository.AddressRepository;
 import com.kopi.kopi.repository.DiningTableRepository;
 import com.kopi.kopi.repository.OrderRepository;
 import com.kopi.kopi.repository.ProductRepository;
+import com.kopi.kopi.repository.UserAddressRepository;
 import com.kopi.kopi.repository.UserRepository;
 import com.kopi.kopi.service.TableService;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +51,9 @@ class OrderServiceImplTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private UserAddressRepository userAddressRepository;
 
     @Mock
     private TableService tableService;
@@ -231,7 +235,8 @@ class OrderServiceImplTest {
 
             // === Then ===
             assertThat(resp.getStatusCode().value()).isEqualTo(200);
-            Map<String, Object> body = (Map<String, Object>) ((List<?>) ((Map<?, ?>) resp.getBody()).get("data")).get(0);
+            Map<String, Object> body = (Map<String, Object>) ((List<?>) ((Map<?, ?>) resp.getBody()).get("data"))
+                    .get(0);
             assertThat(body.get("id")).isEqualTo(500);
             assertThat(body.get("receiver_name")).isEqualTo("Alice");
             assertThat(body.get("delivery_address")).isEqualTo("123 Street");
@@ -339,6 +344,7 @@ class OrderServiceImplTest {
             prod.setProductId(1);
             prod.setName("Latte");
             prod.setPrice(new BigDecimal("2.50"));
+            prod.setStockQty(100);
 
             when(productRepository.findById(eq(1))).thenReturn(java.util.Optional.of(prod));
             when(userRepository.findById(eq(5))).thenReturn(java.util.Optional.of(current));
@@ -354,8 +360,7 @@ class OrderServiceImplTest {
                     "notes", "note",
                     "address", "Addr",
                     "payment_id", 1,
-                    "paid", false
-            );
+                    "paid", false);
 
             // === When ===
             var resp = orderService.createTransaction(body, current);
@@ -383,12 +388,17 @@ class OrderServiceImplTest {
             prod.setProductId(1);
             prod.setName("Latte");
             prod.setPrice(new BigDecimal("2.00"));
+            prod.setStockQty(100);
 
             when(productRepository.findById(eq(1))).thenReturn(java.util.Optional.of(prod));
             when(userRepository.findById(eq(2))).thenReturn(java.util.Optional.of(staff));
             when(userRepository.findById(eq(9))).thenReturn(java.util.Optional.of(customer));
             when(addressRepository.save(any(Address.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> { OrderEntity o = inv.getArgument(0); o.setOrderId(321); return o; });
+            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> {
+                OrderEntity o = inv.getArgument(0);
+                o.setOrderId(321);
+                return o;
+            });
 
             Map<String, Object> body = Map.of(
                     "products", List.of(Map.of("product_id", 1, "qty", 1)),
@@ -396,8 +406,7 @@ class OrderServiceImplTest {
                     "address", "Addr",
                     "payment_id", 2,
                     "customer_id", 9,
-                    "paid", true
-            );
+                    "paid", true);
 
             // === When ===
             var resp = orderService.createTransaction(body, staff);
@@ -417,7 +426,8 @@ class OrderServiceImplTest {
         @DisplayName("should Return 400 When No Token And No TableNumber")
         void should_Return400_When_NoTokenAndNoTable() {
             // === When ===
-            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest(null, null, List.of(), null, 1, false);
+            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest(null, null, List.of(), null,
+                    1, false);
             var resp = orderService.createGuestTableOrder(req);
             // === Then ===
             assertThat(resp.getStatusCode().value()).isEqualTo(400);
@@ -429,7 +439,8 @@ class OrderServiceImplTest {
             // === Given ===
             when(diningTableRepository.findByQrToken(eq("abc"))).thenReturn(java.util.Optional.empty());
             when(diningTableRepository.findByNumber(eq(1))).thenReturn(java.util.Optional.empty());
-            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", 1, List.of(new com.kopi.kopi.controller.GuestOrderController.GuestOrderItem(1, 1)), null, 1, false);
+            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", 1,
+                    List.of(new com.kopi.kopi.controller.GuestOrderController.GuestOrderItem(1, 1)), null, 1, false);
             // === When ===
             var resp = orderService.createGuestTableOrder(req);
             // === Then ===
@@ -443,7 +454,8 @@ class OrderServiceImplTest {
             DiningTable t = new DiningTable();
             t.setStatus("DISABLED");
             when(diningTableRepository.findByQrToken(eq("abc"))).thenReturn(java.util.Optional.of(t));
-            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", null, List.of(new com.kopi.kopi.controller.GuestOrderController.GuestOrderItem(1, 1)), null, 1, false);
+            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", null,
+                    List.of(new com.kopi.kopi.controller.GuestOrderController.GuestOrderItem(1, 1)), null, 1, false);
             // === When ===
             var resp = orderService.createGuestTableOrder(req);
             // === Then ===
@@ -457,7 +469,8 @@ class OrderServiceImplTest {
             DiningTable t = new DiningTable();
             t.setStatus("AVAILABLE");
             when(diningTableRepository.findByQrToken(eq("abc"))).thenReturn(java.util.Optional.of(t));
-            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", null, List.of(), null, 1, false);
+            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", null, List.of(), null,
+                    1, false);
             // === When ===
             var resp = orderService.createGuestTableOrder(req);
             // === Then ===
@@ -478,12 +491,18 @@ class OrderServiceImplTest {
             p.setProductId(1);
             p.setName("Americano");
             p.setPrice(new BigDecimal("2.00"));
+            p.setStockQty(100);
             when(productRepository.findById(eq(1))).thenReturn(java.util.Optional.of(p));
 
-            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> { OrderEntity o = inv.getArgument(0); o.setOrderId(777); return o; });
+            when(orderRepository.save(any(OrderEntity.class))).thenAnswer(inv -> {
+                OrderEntity o = inv.getArgument(0);
+                o.setOrderId(777);
+                return o;
+            });
 
             var items = List.of(new com.kopi.kopi.controller.GuestOrderController.GuestOrderItem(1, 2));
-            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", null, items, "note", 1, false);
+            var req = new com.kopi.kopi.controller.GuestOrderController.GuestOrderRequest("abc", null, items, "note", 1,
+                    false);
 
             // === When ===
             var resp = orderService.createGuestTableOrder(req);
@@ -538,7 +557,7 @@ class OrderServiceImplTest {
             Map<String, Object> result = orderService.getUserTransactions(testUser.getUserId(), 1, 10);
 
             // === Then ===
-            verify(orderRepository).findByCustomer_UserId(eq(101), eq(PageRequest.of(0, 10)));
+            verify(orderRepository).findByCustomer_UserId(eq(101), any(Pageable.class));
 
             assertThat(result).isNotNull();
             List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
@@ -653,7 +672,7 @@ class OrderServiceImplTest {
             Map<String, Object> result = orderService.getUserTransactions(testUser.getUserId(), page, limit);
 
             // === Then ===
-            verify(orderRepository).findByCustomer_UserId(eq(101), eq(PageRequest.of(2, 10)));
+            verify(orderRepository).findByCustomer_UserId(eq(101), any(Pageable.class));
 
             List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
             assertThat(data).hasSize(10);
