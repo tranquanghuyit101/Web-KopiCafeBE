@@ -52,6 +52,12 @@ public class ShippingController {
         Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
         return shippingService.claimOrder(orderId, userId);
     }
+
+    @GetMapping("/estimate")
+    public ResponseEntity<?> estimate(@RequestParam(value = "address_id", required = false) Integer addressId,
+                                      @RequestParam(value = "address", required = false) String addressLine) {
+        return shippingService.estimateFee(addressId, addressLine);
+    }
 }
 
 

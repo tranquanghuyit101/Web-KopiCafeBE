@@ -45,9 +45,9 @@ public class ProductServiceImpl implements ProductService {
 
         Page<Product> pageData;
         if (categoryId != null && categoryId > 0) {
-            pageData = productRepository.findByCategory_CategoryIdAndNameContainingIgnoreCase(categoryId, searchByName == null ? "" : searchByName, pageable);
+            pageData = productRepository.findByAvailableTrueAndCategory_CategoryIdAndNameContainingIgnoreCase(categoryId, searchByName == null ? "" : searchByName, pageable);
         } else {
-            pageData = productRepository.findByNameContainingIgnoreCase(searchByName == null ? "" : searchByName, pageable);
+            pageData = productRepository.findByAvailableTrueAndNameContainingIgnoreCase(searchByName == null ? "" : searchByName, pageable);
         }
 
         List<Map<String, Object>> items = new ArrayList<>();
@@ -100,6 +100,11 @@ public class ProductServiceImpl implements ProductService {
             p.setImgUrl(imgUrl);
         }
         p.setDescription(desc);
+        // Set required defaults for non-nullable columns
+        if (p.getAvailable() == null) p.setAvailable(true);
+        if (p.getStockQty() == null) p.setStockQty(0);
+        if (p.getCreatedAt() == null) p.setCreatedAt(java.time.LocalDateTime.now());
+        if (p.getUpdatedAt() == null) p.setUpdatedAt(java.time.LocalDateTime.now());
         productRepository.save(p);
 
         Map<String, Object> item = new HashMap<>();
@@ -143,8 +148,15 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ResponseEntity<?> delete(Integer id) {
-        productRepository.deleteById(id);
-        return ResponseEntity.ok(Map.of("message", "deleted"));
+        Product p = productRepository.findById(id).orElse(null);
+        if (p == null) {
+            return ResponseEntity.status(404).body(Map.of("message", "not_found"));
+        }
+        // Soft delete: mark unavailable
+        p.setAvailable(false);
+        // Optional: also zero out stock or keep it; we keep stock as-is for audit
+        productRepository.save(p);
+        return ResponseEntity.ok(Map.of("message", "soft_deleted"));
     }
 }
 
