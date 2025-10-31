@@ -55,4 +55,29 @@ public class ProfileController {
         Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
         return profileService.saveDefaultAddress(userId, payload);
     }
+
+    @GetMapping("/addresses")
+    public ResponseEntity<?> listAddresses() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
+        return profileService.listAddresses(userId);
+    }
+
+    public record CreateAddressPayload(String address_line, String ward, String district, String city, Double latitude, Double longitude, Boolean set_default) {}
+
+    @PostMapping("/addresses")
+    public ResponseEntity<?> createAddress(@RequestBody CreateAddressPayload payload) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
+        boolean setDefault = payload.set_default() != null && payload.set_default();
+        AddressPayload core = new AddressPayload(payload.address_line(), payload.ward(), payload.district(), payload.city(), payload.latitude(), payload.longitude());
+        return profileService.createAddress(userId, core, setDefault);
+    }
+
+    @PutMapping("/addresses/{userAddressId}/default")
+    public ResponseEntity<?> setDefault(@PathVariable("userAddressId") Integer userAddressId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
+        return profileService.setDefaultAddress(userId, userAddressId);
+    }
 }

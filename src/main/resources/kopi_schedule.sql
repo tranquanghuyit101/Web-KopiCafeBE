@@ -25,6 +25,7 @@ CREATE TABLE dbo.users (
     full_name         NVARCHAR(150)  NOT NULL,
     role_id           INT             NOT NULL,
     status            NVARCHAR(20)    NOT NULL,
+    email_verified    BIT            NOT NULL,
     avatar_url        NVARCHAR(255)   NULL,
     created_at        DATETIME2(3)    NOT NULL,
     updated_at        DATETIME2(3)    NOT NULL,
@@ -54,6 +55,15 @@ CREATE TABLE dbo.user_addresses (
     created_at      DATETIME2(3)  NOT NULL
 );
 
+-- USER_OTPS
+CREATE TABLE dbo.user_otps (
+    id          INT IDENTITY(1,1) NOT NULL,
+    user_id     INT NOT NULL,
+    otp_hash    NVARCHAR(255) NOT NULL,
+    expires_at  DATETIME2(3) NOT NULL,
+    created_at  DATETIME2(3) NOT NULL
+);
+
 -- CATEGORIES
 CREATE TABLE dbo.categories (
     category_id   INT IDENTITY(1,1) NOT NULL,
@@ -68,6 +78,7 @@ CREATE TABLE dbo.products (
     category_id  INT        NOT NULL,
     name         NVARCHAR(150) NOT NULL,
     img_url      NVARCHAR(255) NULL,
+    description  NVARCHAR(MAX) NULL,
     sku          NVARCHAR(50)  NULL,
     price        DECIMAL(18,2) NOT NULL,
     is_available BIT           NOT NULL,
@@ -281,6 +292,7 @@ ALTER TABLE dbo.roles            ADD CONSTRAINT PK_roles PRIMARY KEY (role_id);
 ALTER TABLE dbo.users            ADD CONSTRAINT PK_users PRIMARY KEY (user_id);
 ALTER TABLE dbo.addresses        ADD CONSTRAINT PK_addresses PRIMARY KEY (address_id);
 ALTER TABLE dbo.user_addresses   ADD CONSTRAINT PK_user_addresses PRIMARY KEY (user_address_id);
+ALTER TABLE dbo.user_otps       ADD CONSTRAINT PK_user_otps PRIMARY KEY (id);
 ALTER TABLE dbo.categories       ADD CONSTRAINT PK_categories PRIMARY KEY (category_id);
 ALTER TABLE dbo.products         ADD CONSTRAINT PK_products PRIMARY KEY (product_id);
 ALTER TABLE dbo.orders           ADD CONSTRAINT PK_orders PRIMARY KEY (order_id);
@@ -338,6 +350,9 @@ ALTER TABLE dbo.user_addresses
     ADD CONSTRAINT FK_user_addresses_user FOREIGN KEY (user_id) REFERENCES dbo.users(user_id) ON DELETE CASCADE,
         CONSTRAINT FK_user_addresses_address FOREIGN KEY (address_id) REFERENCES dbo.addresses(address_id) ON DELETE CASCADE;
 
+ALTER TABLE dbo.user_otps
+    ADD CONSTRAINT FK_user_otps_user FOREIGN KEY (user_id) REFERENCES dbo.users(user_id) ON DELETE CASCADE;
+
 ALTER TABLE dbo.discount_event_products
     ADD CONSTRAINT FK_discount_event_products_event FOREIGN KEY (discount_event_id) REFERENCES dbo.discount_events(discount_event_id) ON DELETE CASCADE,
         CONSTRAINT FK_discount_event_products_product FOREIGN KEY (product_id) REFERENCES dbo.products(product_id) ON DELETE CASCADE;
@@ -389,6 +404,9 @@ ALTER TABLE dbo.employee_shifts
 
 ALTER TABLE dbo.users
     ADD CONSTRAINT CK_users_status CHECK (status IN (N'active', N'banned', N'inactive'));
+
+ALTER TABLE dbo.users
+    ADD CONSTRAINT CK_users_phone_not_blank CHECK (phone IS NULL OR phone <> '');
 
 ALTER TABLE dbo.order_details
     ADD CONSTRAINT CK_order_details_qty CHECK (quantity > 0);
@@ -456,7 +474,11 @@ ALTER TABLE dbo.employee_shifts
 
 ALTER TABLE dbo.users
     ADD CONSTRAINT DF_users_created_at DEFAULT SYSUTCDATETIME() FOR created_at,
-        CONSTRAINT DF_users_updated_at DEFAULT SYSUTCDATETIME() FOR updated_at;
+        CONSTRAINT DF_users_updated_at DEFAULT SYSUTCDATETIME() FOR updated_at,
+        CONSTRAINT DF_users_email_verified DEFAULT (0) FOR email_verified;
+
+ALTER TABLE dbo.user_otps
+    ADD CONSTRAINT DF_user_otps_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
 
 ALTER TABLE dbo.addresses
     ADD CONSTRAINT DF_addresses_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
@@ -537,6 +559,10 @@ CREATE UNIQUE INDEX UX_users_email ON dbo.users(email);
 CREATE UNIQUE INDEX UX_users_phone ON dbo.users(phone) WHERE phone IS NOT NULL;
 CREATE INDEX IX_users_role_id ON dbo.users(role_id);
 CREATE INDEX IX_users_position_id ON dbo.users(position_id);
+
+-- USER_OTPS
+CREATE INDEX IX_user_otps_user ON dbo.user_otps(user_id);
+CREATE INDEX IX_user_otps_expiry ON dbo.user_otps(expires_at);
 
 -- ROLES
 CREATE UNIQUE INDEX UX_roles_name ON dbo.roles(name);

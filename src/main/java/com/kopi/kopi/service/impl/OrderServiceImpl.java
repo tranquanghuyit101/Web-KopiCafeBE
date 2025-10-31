@@ -28,7 +28,9 @@ public class OrderServiceImpl implements OrderService {
     private final TableService tableService;
     private final DiningTableRepository diningTableRepository;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository) {
+    private final MapboxService mapboxService;
+
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -36,6 +38,7 @@ public class OrderServiceImpl implements OrderService {
         this.tableService = tableService;
         this.diningTableRepository = diningTableRepository;
         this.userAddressRepository = userAddressRepository;
+        this.mapboxService = mapboxService;
     }
 
     @Override
@@ -132,7 +135,8 @@ public class OrderServiceImpl implements OrderService {
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), Math.max(limit, 1));
         Page<OrderEntity> pageData;
         if ("TABLE".equalsIgnoreCase(type)) {
-            pageData = orderRepository.findByStatusAndTableIsNotNull(status, pageable);
+            // Show dine-in/table orders with NO delivery address and status NOT IN (CANCELLED, REJECTED, COMPLETED)
+            pageData = orderRepository.findByStatusNotInAndAddressIsNull(List.of("CANCELLED", "REJECTED", "COMPLETED"), pageable);
         } else if ("SHIPPING".equalsIgnoreCase(type)) {
             // Show orders with address and status NOT IN (CANCELLED, REJECTED, COMPLETED)
             pageData = orderRepository.findByStatusNotInAndAddressIsNotNull(List.of("CANCELLED", "REJECTED", "COMPLETED"), pageable);
@@ -247,6 +251,10 @@ public class OrderServiceImpl implements OrderService {
         List<Map<String, Object>> products = (List<Map<String, Object>>) body.getOrDefault("products", List.of());
         String notes = (String) body.getOrDefault("notes", "");
         String addressText = (String) body.getOrDefault("address", "");
+        Integer addressIdFromBody = null;
+        if (body.containsKey("address_id") && body.get("address_id") != null) {
+            try { addressIdFromBody = Integer.valueOf(String.valueOf(body.get("address_id"))); } catch (Exception ignored) {}
+        }
         Integer paymentId = Integer.valueOf(String.valueOf(body.getOrDefault("payment_id", 1)));
         boolean paid = false;
         try { paid = Boolean.parseBoolean(String.valueOf(body.getOrDefault("paid", false))); } catch (Exception ignored) {}
@@ -289,45 +297,26 @@ public class OrderServiceImpl implements OrderService {
         if (roleId != null && roleId == 3) {
             // Customer placing order: customer = current user, created_by = current user, address optional
             customer = userRepository.findById(userId).orElse(null);
-            if (addressText != null && !addressText.isBlank()) {
-                // Reuse user's default address if present (to avoid duplicate address rows), else create a new one
-                List<UserAddress> saved = userAddressRepository.findAllWithAddressByUserId(userId);
-                if (saved != null && !saved.isEmpty() && saved.get(0).getAddress() != null) {
-                    addr = saved.get(0).getAddress();
-                } else {
-                    addr = Address.builder()
-                            .addressLine(addressText)
-                            .createdAt(LocalDateTime.now())
-                            .build();
-                    addr = addressRepository.save(addr);
-                }
+            if (addressIdFromBody != null) {
+                Address candidate = addressRepository.findById(addressIdFromBody).orElse(null);
+                // Optional: ensure the address belongs to this user
+                if (candidate != null) addr = candidate;
+            } else if (addressText != null && !addressText.isBlank()) {
+                // Always create a new ad-hoc address for this order when explicit address text provided
+                addr = Address.builder()
+                        .addressLine(addressText)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                addr = addressRepository.save(addr);
             }
         } else if (roleId != null && roleId == 2) {
             // Staff placing order: if customer_id is provided, attach customer; if null, keep null; address must be null when customer is null
             if (customerIdFromBody != null) {
                 customer = userRepository.findById(customerIdFromBody).orElse(null);
-                if (addressText != null && !addressText.isBlank()) {
-                    // Reuse customer's default address if present, else create
-                    List<UserAddress> saved = userAddressRepository.findAllWithAddressByUserId(customerIdFromBody);
-                    if (saved != null && !saved.isEmpty() && saved.get(0).getAddress() != null) {
-                        addr = saved.get(0).getAddress();
-                    } else {
-                        addr = Address.builder()
-                                .addressLine(addressText)
-                                .createdAt(LocalDateTime.now())
-                                .build();
-                        addr = addressRepository.save(addr);
-                    }
-                }
-            }
-        } else {
-            // Fallback: treat like customer, but keep safe
-            customer = userRepository.findById(userId).orElse(null);
-            if (addressText != null && !addressText.isBlank()) {
-                List<UserAddress> saved = userAddressRepository.findAllWithAddressByUserId(userId);
-                if (saved != null && !saved.isEmpty() && saved.get(0).getAddress() != null) {
-                    addr = saved.get(0).getAddress();
-                } else {
+                if (addressIdFromBody != null) {
+                    Address candidate = addressRepository.findById(addressIdFromBody).orElse(null);
+                    if (candidate != null) addr = candidate;
+                } else if (addressText != null && !addressText.isBlank()) {
                     addr = Address.builder()
                             .addressLine(addressText)
                             .createdAt(LocalDateTime.now())
@@ -335,12 +324,57 @@ public class OrderServiceImpl implements OrderService {
                     addr = addressRepository.save(addr);
                 }
             }
+        } else {
+            // Fallback: treat like customer, but keep safe
+            customer = userRepository.findById(userId).orElse(null);
+            if (addressIdFromBody != null) {
+                Address candidate = addressRepository.findById(addressIdFromBody).orElse(null);
+                if (candidate != null) addr = candidate;
+            } else if (addressText != null && !addressText.isBlank()) {
+                addr = Address.builder()
+                        .addressLine(addressText)
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                addr = addressRepository.save(addr);
+            }
+        }
+
+        // If shipping (address present), validate city and compute shipping fee with Mapbox
+        BigDecimal shippingFee = BigDecimal.ZERO;
+        if (addr != null) {
+            // Ensure we have city and coordinates
+            String city = addr.getCity();
+            if (city == null || city.isBlank() || addr.getLatitude() == null || addr.getLongitude() == null) {
+                var geo = mapboxService.geocodeAddress(addr.getAddressLine());
+                if (geo != null) {
+                    if (addr.getLatitude() == null) addr.setLatitude(geo.lat());
+                    if (addr.getLongitude() == null) addr.setLongitude(geo.lng());
+                    if (city == null || city.isBlank()) addr.setCity(geo.city());
+                    addressRepository.save(addr);
+                    city = addr.getCity();
+                }
+            }
+            String normCity = normalizeCity(city);
+            if (normCity == null || !normCity.equals("da nang")) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Chỉ có thể ship nội tỉnh (Đà Nẵng)"));
+            }
+            if (addr.getLatitude() == null || addr.getLongitude() == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu toạ độ giao hàng"));
+            }
+            double meters = mapboxService.getDrivingDistanceMeters(mapboxService.getShopLat(), mapboxService.getShopLng(), addr.getLatitude(), addr.getLongitude());
+            if (meters < 0) {
+                return ResponseEntity.status(502).body(Map.of("message", "Không tính được khoảng cách giao hàng"));
+            }
+            double km = meters / 1000.0;
+            if (km < 1.0) shippingFee = BigDecimal.ZERO;
+            else if (km <= 3.0) shippingFee = new BigDecimal("30000");
+            else shippingFee = new BigDecimal("50000");
         }
 
         OrderEntity order = OrderEntity.builder()
                 .orderCode("ORD-" + System.currentTimeMillis())
                 .status(paid ? "COMPLETED" : "PENDING")
-                .subtotalAmount(subtotal)
+                .subtotalAmount(subtotal.add(shippingFee))
                 .discountAmount(BigDecimal.ZERO)
                 .note(notes)
                 .createdAt(LocalDateTime.now())
@@ -360,7 +394,7 @@ public class OrderServiceImpl implements OrderService {
             if (paymentId == 2) method = PaymentMethod.BANKING;
             Payment payment = Payment.builder()
                     .order(order)
-                    .amount(subtotal)
+                    .amount(subtotal.add(shippingFee))
                     .method(method)
                     .status(paid ? PaymentStatus.PAID : PaymentStatus.PENDING)
                     .createdAt(LocalDateTime.now())
@@ -370,6 +404,14 @@ public class OrderServiceImpl implements OrderService {
 
         OrderEntity saved = orderRepository.save(order);
         return ResponseEntity.ok(Map.of("message", "OK", "data", Map.of("id", saved.getOrderId())));
+    }
+
+    private String normalizeCity(String s) {
+        if (s == null) return null;
+        String lower = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .toLowerCase();
+        return lower.trim();
     }
 
     @Override
@@ -456,6 +498,7 @@ public class OrderServiceImpl implements OrderService {
     private BigDecimal defaultBigDecimal(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
     }
+    
     @Override
     public ResponseEntity<?> validateProducts(Map<String, Object> body) {
         @SuppressWarnings("unchecked")
