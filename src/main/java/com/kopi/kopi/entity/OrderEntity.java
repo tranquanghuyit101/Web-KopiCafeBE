@@ -93,4 +93,10 @@ public class OrderEntity {
 	@JoinColumn(name = "table_id")
 	@ToString.Exclude
 	private DiningTable table;
+
+	// Assigned shipper (employee) who claimed this order for delivery
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "shipper_user_id")
+	@ToString.Exclude
+	private User shipper;
 } 

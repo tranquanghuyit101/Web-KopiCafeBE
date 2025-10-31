@@ -22,6 +22,8 @@ public class ProfileResponse {
 
     private String role;
     private String status;
+    private Integer positionId;
+    private String positionName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

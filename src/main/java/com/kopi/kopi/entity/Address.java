@@ -31,6 +31,12 @@ public class Address {
 	@Column(name = "city", length = 100)
 	private String city;
 
+	@Column(name = "latitude")
+	private Double latitude;
+
+	@Column(name = "longitude")
+	private Double longitude;
+
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 
