@@ -28,7 +28,9 @@ public class OrderServiceImpl implements OrderService {
     private final TableService tableService;
     private final DiningTableRepository diningTableRepository;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository) {
+    private final MapboxService mapboxService;
+
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -36,6 +38,7 @@ public class OrderServiceImpl implements OrderService {
         this.tableService = tableService;
         this.diningTableRepository = diningTableRepository;
         this.userAddressRepository = userAddressRepository;
+        this.mapboxService = mapboxService;
     }
 
     @Override
@@ -336,10 +339,42 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        // If shipping (address present), validate city and compute shipping fee with Mapbox
+        BigDecimal shippingFee = BigDecimal.ZERO;
+        if (addr != null) {
+            // Ensure we have city and coordinates
+            String city = addr.getCity();
+            if (city == null || city.isBlank() || addr.getLatitude() == null || addr.getLongitude() == null) {
+                var geo = mapboxService.geocodeAddress(addr.getAddressLine());
+                if (geo != null) {
+                    if (addr.getLatitude() == null) addr.setLatitude(geo.lat());
+                    if (addr.getLongitude() == null) addr.setLongitude(geo.lng());
+                    if (city == null || city.isBlank()) addr.setCity(geo.city());
+                    addressRepository.save(addr);
+                    city = addr.getCity();
+                }
+            }
+            String normCity = normalizeCity(city);
+            if (normCity == null || !normCity.equals("da nang")) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Chỉ có thể ship nội tỉnh (Đà Nẵng)"));
+            }
+            if (addr.getLatitude() == null || addr.getLongitude() == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu toạ độ giao hàng"));
+            }
+            double meters = mapboxService.getDrivingDistanceMeters(mapboxService.getShopLat(), mapboxService.getShopLng(), addr.getLatitude(), addr.getLongitude());
+            if (meters < 0) {
+                return ResponseEntity.status(502).body(Map.of("message", "Không tính được khoảng cách giao hàng"));
+            }
+            double km = meters / 1000.0;
+            if (km < 1.0) shippingFee = BigDecimal.ZERO;
+            else if (km <= 3.0) shippingFee = new BigDecimal("30000");
+            else shippingFee = new BigDecimal("50000");
+        }
+
         OrderEntity order = OrderEntity.builder()
                 .orderCode("ORD-" + System.currentTimeMillis())
                 .status(paid ? "COMPLETED" : "PENDING")
-                .subtotalAmount(subtotal)
+                .subtotalAmount(subtotal.add(shippingFee))
                 .discountAmount(BigDecimal.ZERO)
                 .note(notes)
                 .createdAt(LocalDateTime.now())
@@ -359,7 +394,7 @@ public class OrderServiceImpl implements OrderService {
             if (paymentId == 2) method = PaymentMethod.BANKING;
             Payment payment = Payment.builder()
                     .order(order)
-                    .amount(subtotal)
+                    .amount(subtotal.add(shippingFee))
                     .method(method)
                     .status(paid ? PaymentStatus.PAID : PaymentStatus.PENDING)
                     .createdAt(LocalDateTime.now())
@@ -369,6 +404,14 @@ public class OrderServiceImpl implements OrderService {
 
         OrderEntity saved = orderRepository.save(order);
         return ResponseEntity.ok(Map.of("message", "OK", "data", Map.of("id", saved.getOrderId())));
+    }
+
+    private String normalizeCity(String s) {
+        if (s == null) return null;
+        String lower = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .toLowerCase();
+        return lower.trim();
     }
 
     @Override
