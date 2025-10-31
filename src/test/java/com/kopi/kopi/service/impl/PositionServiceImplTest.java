@@ -35,7 +35,7 @@ class PositionServiceImplTest {
         Position p = new Position();
         p.setPositionId(id);
         p.setPositionName(name);
-        p.setIsActive(true);
+        p.setActive(true);
         return p;
     }
 

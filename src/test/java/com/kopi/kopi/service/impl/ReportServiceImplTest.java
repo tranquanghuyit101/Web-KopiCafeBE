@@ -27,9 +27,12 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ReportServiceImplTest {
 
-    @Mock private PaymentRepository paymentRepository;
-    @Mock private EntityManager em;
-    @Mock private Query nativeQuery;
+    @Mock
+    private PaymentRepository paymentRepository;
+    @Mock
+    private EntityManager em;
+    @Mock
+    private Query nativeQuery;
 
     @InjectMocks
     private ReportServiceImpl service;
@@ -55,7 +58,7 @@ class ReportServiceImplTest {
         int orders = 4;
         // paymentRepository.sumPaidByDay(fromDt, toDt) returns List<Object[]>
         when(paymentRepository.sumPaidByDay(any(), any()))
-                .thenReturn(List.of(new Object[]{d, total, orders}));
+                .thenReturn((List<Object[]>) (List) List.of(new Object[] { d, total, orders }));
 
         // When
         var points = service.revenue(daily, d, d, 0);
@@ -78,10 +81,10 @@ class ReportServiceImplTest {
         // Given: Monday 2025-02-03 as bucket start (ISO week)
         Timestamp ts = Timestamp.valueOf(LocalDateTime.of(2025, 2, 3, 0, 0));
         when(paymentRepository.sumPaidByWeek(any(), any()))
-                .thenReturn(List.of(new Object[]{ts, new BigDecimal("200"), 2}));
+                .thenReturn((List<Object[]>) (List) List.of(new Object[] { ts, new BigDecimal("200"), 2 }));
 
         // When
-        var points = service.revenue(weekly, LocalDate.of(2025,2,3), LocalDate.of(2025,2,3), 0);
+        var points = service.revenue(weekly, LocalDate.of(2025, 2, 3), LocalDate.of(2025, 2, 3), 0);
 
         // Then
         assertThat(points).hasSize(1);
@@ -96,14 +99,14 @@ class ReportServiceImplTest {
     @Test
     void should_TrimToBuckets_ForMonthly() {
         // Given 3 months, buckets=2 => keep last 2
-        var jan = new Object[]{LocalDate.of(2025,1,1), new BigDecimal("10"), 1};
-        var feb = new Object[]{LocalDate.of(2025,2,1), new BigDecimal("20"), 2};
-        var mar = new Object[]{LocalDate.of(2025,3,1), new BigDecimal("30"), 3};
+        var jan = new Object[] { LocalDate.of(2025, 1, 1), new BigDecimal("10"), 1 };
+        var feb = new Object[] { LocalDate.of(2025, 2, 1), new BigDecimal("20"), 2 };
+        var mar = new Object[] { LocalDate.of(2025, 3, 1), new BigDecimal("30"), 3 };
         when(paymentRepository.sumPaidByMonth(any(), any()))
-                .thenReturn(List.of(jan, feb, mar));
+                .thenReturn((List<Object[]>) (List) List.of(jan, feb, mar));
 
         // When
-        var points = service.revenue(monthly, LocalDate.of(2025,1,1), LocalDate.of(2025,3,31), 2);
+        var points = service.revenue(monthly, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 3, 31), 2);
 
         // Then
         assertThat(points).hasSize(2);
@@ -115,10 +118,11 @@ class ReportServiceImplTest {
     void should_MapQuarterly_EndDateAndLabel() {
         // Given: start 2025-01-01 -> end 2025-03-31, label Q1 2025
         when(paymentRepository.sumPaidByQuarter(any(), any()))
-                .thenReturn(List.of(new Object[]{LocalDate.of(2025,1,1), new BigDecimal("90"), 3}));
+                .thenReturn((List<Object[]>) (List) List
+                        .of(new Object[] { LocalDate.of(2025, 1, 1), new BigDecimal("90"), 3 }));
 
         // When
-        var points = service.revenue(quarterly, LocalDate.of(2025,1,1), LocalDate.of(2025,3,31), 0);
+        var points = service.revenue(quarterly, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 3, 31), 0);
 
         // Then
         assertThat(points).hasSize(1);
@@ -136,12 +140,11 @@ class ReportServiceImplTest {
         ReportServiceImpl spyService = Mockito.spy(service);
         List<RevenuePoint> pts = List.of(
                 RevenuePoint.builder().label("Jan 2025").year(2025).month(1).total_sum(new BigDecimal("10")).build(),
-                RevenuePoint.builder().label("Feb 2025").year(2025).month(2).total_sum(new BigDecimal("20")).build()
-        );
+                RevenuePoint.builder().label("Feb 2025").year(2025).month(2).total_sum(new BigDecimal("20")).build());
         doReturn(pts).when(spyService).revenue(eq(monthly), any(), any(), anyInt());
 
         // When
-        byte[] bytes = spyService.exportRevenueToExcel(monthly, LocalDate.of(2025,1,1), LocalDate.of(2025,2,28), 2);
+        byte[] bytes = spyService.exportRevenueToExcel(monthly, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 2, 28), 2);
 
         // Then
         assertThat(bytes).isNotEmpty();
@@ -173,8 +176,7 @@ class ReportServiceImplTest {
         // Given
         ReportServiceImpl spyService = Mockito.spy(service);
         List<RevenuePoint> pts = List.of(
-                RevenuePoint.builder().label("Q1 2025").year(2025).quarter(1).total_sum(new BigDecimal("90")).build()
-        );
+                RevenuePoint.builder().label("Q1 2025").year(2025).quarter(1).total_sum(new BigDecimal("90")).build());
         doReturn(pts).when(spyService).revenue(eq(quarterly), any(), any(), anyInt());
 
         // When
@@ -206,9 +208,9 @@ class ReportServiceImplTest {
 
         // 3 native counts in order: products, promos, pendingOrders
         when(nativeQuery.getSingleResult())
-                .thenReturn(100)  // products
-                .thenReturn(3)    // promos
-                .thenReturn(7);   // pending
+                .thenReturn(100) // products
+                .thenReturn(3) // promos
+                .thenReturn(7); // pending
 
         // When
         DashboardSummary s = service.summary();
@@ -239,14 +241,14 @@ class ReportServiceImplTest {
         when(paymentRepository.sumPaidBetween(any(), any()))
                 .thenReturn(null, null, null, null);
         when(paymentRepository.countPaidBetween(any(), any()))
-                .thenReturn(0,0,0,0);
+                .thenReturn(0, 0, 0, 0);
 
         // Native query throws or returns null → safeCount => 0
         when(em.createNativeQuery(anyString())).thenReturn(nativeQuery);
         when(nativeQuery.getSingleResult())
-                .thenReturn(null)       // products
+                .thenReturn(null) // products
                 .thenThrow(new RuntimeException("DB down")) // promos
-                .thenReturn(null);       // pending (won't be reached if throw breaks; but safeCount catches)
+                .thenReturn(null); // pending (won't be reached if throw breaks; but safeCount catches)
         // Note: safeCount catch-all sẽ trả 0 cho mọi vấn đề.
 
         // When

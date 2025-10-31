@@ -20,10 +20,12 @@ class EmailServiceImplTest {
     private EmailServiceImpl service;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         service = new EmailServiceImpl(mailSender);
-        // giả lập inject value từ @Value
-        service.from = "testsender@example.com";
+        // giả lập inject value từ @Value bằng reflection
+        java.lang.reflect.Field f = EmailServiceImpl.class.getDeclaredField("from");
+        f.setAccessible(true);
+        f.set(service, "testsender@example.com");
     }
 
     @AfterEach
@@ -40,7 +42,7 @@ class EmailServiceImplTest {
         service.send("user@example.com", "Hello", "Hi there");
 
         // Then
-        verify(mailSender, times(1)).send(captor.capture());
+        verify(mailSender, times(1)).send((SimpleMailMessage) captor.capture());
         SimpleMailMessage msg = captor.getValue();
 
         assertThat(msg.getFrom()).isEqualTo("testsender@example.com");
@@ -58,7 +60,7 @@ class EmailServiceImplTest {
         service.send("user@example.com", "NoBody", null);
 
         // Then
-        verify(mailSender).send(captor.capture());
+        verify(mailSender).send((SimpleMailMessage) captor.capture());
         assertThat(captor.getValue().getText()).isEqualTo("");
     }
 
@@ -67,7 +69,7 @@ class EmailServiceImplTest {
         // Expect
         assertThatThrownBy(() -> service.send(null, "Subject", "Body"))
                 .isInstanceOf(NullPointerException.class);
-        verify(mailSender, never()).send(any());
+        verify(mailSender, never()).send(any(SimpleMailMessage.class));
     }
 
     @Test
@@ -75,6 +77,6 @@ class EmailServiceImplTest {
         // Expect
         assertThatThrownBy(() -> service.send("user@example.com", null, "Body"))
                 .isInstanceOf(NullPointerException.class);
-        verify(mailSender, never()).send(any());
+        verify(mailSender, never()).send(any(SimpleMailMessage.class));
     }
 }

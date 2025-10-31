@@ -57,11 +57,9 @@ class MenuServiceImplTest {
         // Given
         var coffee = category("Coffee", List.of(
                 product("Americano", new BigDecimal("3.50")),
-                product("Latte", new BigDecimal("4.20"))
-        ));
+                product("Latte", new BigDecimal("4.20"))));
         var tea = category("Tea", List.of(
-                product("Earl Grey", new BigDecimal("2.80"))
-        ));
+                product("Earl Grey", new BigDecimal("2.80"))));
         when(categoryRepository.findAll()).thenReturn(List.of(coffee, tea));
 
         // When
@@ -70,17 +68,17 @@ class MenuServiceImplTest {
         // Then
         assertThat(menu).hasSize(2);
         // Category 1
-        assertThat(menu.get(0).name()).isEqualTo("Coffee");
-        assertThat(menu.get(0).products()).hasSize(2);
-        assertThat(menu.get(0).products().get(0).name()).isEqualTo("Americano");
-        assertThat(menu.get(0).products().get(0).price()).isEqualByComparingTo("3.50");
-        assertThat(menu.get(0).products().get(1).name()).isEqualTo("Latte");
-        assertThat(menu.get(0).products().get(1).price()).isEqualByComparingTo("4.20");
+        assertThat(menu.get(0).getName()).isEqualTo("Coffee");
+        assertThat(menu.get(0).getProducts()).hasSize(2);
+        assertThat(menu.get(0).getProducts().get(0).getName()).isEqualTo("Americano");
+        assertThat(menu.get(0).getProducts().get(0).getPrice()).isEqualByComparingTo("3.50");
+        assertThat(menu.get(0).getProducts().get(1).getName()).isEqualTo("Latte");
+        assertThat(menu.get(0).getProducts().get(1).getPrice()).isEqualByComparingTo("4.20");
         // Category 2
-        assertThat(menu.get(1).name()).isEqualTo("Tea");
-        assertThat(menu.get(1).products()).hasSize(1);
-        assertThat(menu.get(1).products().get(0).name()).isEqualTo("Earl Grey");
-        assertThat(menu.get(1).products().get(0).price()).isEqualByComparingTo("2.80");
+        assertThat(menu.get(1).getName()).isEqualTo("Tea");
+        assertThat(menu.get(1).getProducts()).hasSize(1);
+        assertThat(menu.get(1).getProducts().get(0).getName()).isEqualTo("Earl Grey");
+        assertThat(menu.get(1).getProducts().get(0).getPrice()).isEqualByComparingTo("2.80");
 
         verify(categoryRepository, times(1)).findAll();
     }
@@ -96,8 +94,8 @@ class MenuServiceImplTest {
 
         // Then
         assertThat(menu).hasSize(1);
-        assertThat(menu.get(0).name()).isEqualTo("Snacks");
-        assertThat(menu.get(0).products()).isEmpty();
+        assertThat(menu.get(0).getName()).isEqualTo("Snacks");
+        assertThat(menu.get(0).getProducts()).isEmpty();
     }
 
     @Test
@@ -117,9 +115,8 @@ class MenuServiceImplTest {
     void should_PreserveOrder_AndAllowNullPrice() {
         // Given
         var cat = category("Specials", List.of(
-                product("Mystery Drink", null),           // null price should flow through
-                product("Signature", new BigDecimal("5"))
-        ));
+                product("Mystery Drink", null), // null price should flow through
+                product("Signature", new BigDecimal("5"))));
         when(categoryRepository.findAll()).thenReturn(List.of(cat));
 
         // When
@@ -127,11 +124,11 @@ class MenuServiceImplTest {
 
         // Then
         assertThat(menu).hasSize(1);
-        var products = menu.get(0).products();
+        var products = menu.get(0).getProducts();
         assertThat(products).hasSize(2);
-        assertThat(products.get(0).name()).isEqualTo("Mystery Drink");
-        assertThat(products.get(0).price()).isNull();     // chấp nhận null
-        assertThat(products.get(1).name()).isEqualTo("Signature");
-        assertThat(products.get(1).price()).isEqualByComparingTo("5");
+        assertThat(products.get(0).getName()).isEqualTo("Mystery Drink");
+        assertThat(products.get(0).getPrice()).isNull(); // chấp nhận null
+        assertThat(products.get(1).getName()).isEqualTo("Signature");
+        assertThat(products.get(1).getPrice()).isEqualByComparingTo("5");
     }
 }
