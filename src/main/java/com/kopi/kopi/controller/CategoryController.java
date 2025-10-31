@@ -1,15 +1,17 @@
 package com.kopi.kopi.controller;
 
-import com.kopi.kopi.entity.Category;
-import com.kopi.kopi.repository.CategoryRepository;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.kopi.kopi.entity.Category;
+import com.kopi.kopi.repository.CategoryRepository;
 
 @RestController
 @RequestMapping("/apiv1/categories")

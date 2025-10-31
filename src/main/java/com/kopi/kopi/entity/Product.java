@@ -15,49 +15,70 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Product {
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	@Column(name = "product_id")
-	private Integer productId;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "product_id")
+    private Integer productId;
 
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "category_id", nullable = false)
-	@ToString.Exclude
-	private Category category;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "category_id", nullable = false)
+    @ToString.Exclude
+    private Category category;
 
-	@Column(name = "name", nullable = false, length = 150)
-	private String name;
+    @Column(name = "name", nullable = false, length = 150)
+    private String name;
 
-	@Column(name = "img_url", length = 255)
-	private String imgUrl;
+    @Column(name = "img_url", length = 255)
+    private String imgUrl;
 
-	@Column(name = "sku", length = 50)
-	private String sku;
+	  @Column(name = "description")
+	  private String description;
 
-	@Column(name = "price", nullable = false, precision = 18, scale = 2)
-	private BigDecimal price;
+    @Column(name = "sku", length = 50)
+    private String sku;
 
-	@Column(name = "is_available", nullable = false)
-	private Boolean available;
+    @Column(name = "price", nullable = false, precision = 18, scale = 2)
+    private BigDecimal price;
 
-	@Column(name = "stock_qty", nullable = false)
-	private Integer stockQty;
+	  @Column(name = "is_available", nullable = false)
+	  private Boolean available;
 
-	@Column(name = "created_at", nullable = false)
-	private LocalDateTime createdAt;
+    @Column(name = "stock_qty", nullable = false)
+    private Integer stockQty;
 
-	@Column(name = "updated_at", nullable = false)
-	private LocalDateTime updatedAt;
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
 
-	@OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
-	@ToString.Exclude
-	@EqualsAndHashCode.Exclude
-	@Builder.Default
-	private List<OrderDetail> orderDetails = new ArrayList<>();
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 
-	@OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
-	@ToString.Exclude
-	@EqualsAndHashCode.Exclude
-	@Builder.Default
-	private List<DiscountEventProduct> discountEventProducts = new ArrayList<>();
-} 
+    @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @Builder.Default
+    private List<OrderDetail> orderDetails = new ArrayList<>();
+
+    @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @Builder.Default
+    private List<DiscountEventProduct> discountEventProducts = new ArrayList<>();
+
+    // ✅ Constructor tiện dụng cho DataInit
+    public Product(Category category, String name, String sku, BigDecimal price, String imgUrl) {
+        this.category = category;
+        this.name = name;
+        this.sku = sku;
+        this.price = price;
+        this.imgUrl = imgUrl;
+        this.available = true;
+        this.stockQty = 100;
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    // ✅ Giúp code trong DataInit gọi được p.setActive(true)
+    public void setActive(boolean active) {
+        this.available = active;
+    }
+}

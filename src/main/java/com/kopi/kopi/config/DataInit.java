@@ -24,9 +24,12 @@ import com.kopi.kopi.repository.PositionRepository;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 @Configuration
 public class DataInit {
@@ -37,90 +40,175 @@ public class DataInit {
 			if (roleRepository.count() == 0) {
 				Role admin = new Role();
 				admin.setName("ADMIN");
-				admin.setDescription("Quản trị hệ thống");
+				admin.setDescription("System Administrator");
 				roleRepository.save(admin);
 
 				Role staff = new Role();
 				staff.setName("STAFF");
-				staff.setDescription("Nhân viên");
+				staff.setDescription("Employee");
 				roleRepository.save(staff);
 
 				Role customer = new Role();
 				customer.setName("CUSTOMER");
-				customer.setDescription("Khách hàng");
+				customer.setDescription("Customer");
 				roleRepository.save(customer);
 			}
 
-			// Seed categories
-			if (categoryRepository.count() == 0) {
-				Category caPhe = new Category();
-				caPhe.setName("Cà phê");
-				caPhe.setActive(true);
-				caPhe.setDisplayOrder(1);
-				categoryRepository.save(caPhe);
+            // --- Seed Categories ---
+            if (categoryRepository.count() == 0) {
+                categoryRepository.saveAll(List.of(
+                        new Category("Coffee", true, 1),
+                        new Category("Milk Tea", true, 2),
+                        new Category("Juice", true, 4),
+                        new Category("Ice Blended", true, 5),
+                        new Category("Yogurt", true, 6),
+                        new Category("Others", true, 7),
+                        new Category("Food", true, 8),
+                        new Category("Cake", true, 9),
+                        new Category("Soft Drink", true, 10)
+                ));
+            }
 
-				Category traSua = new Category();
-				traSua.setName("Trà sữa");
-				traSua.setActive(true);
-				traSua.setDisplayOrder(2);
-				categoryRepository.save(traSua);
-			}
+// --- Seed Products ---
+            if (productRepository.count() == 0) {
+                LocalDateTime now = LocalDateTime.now();
 
-			// Seed products
-			if (productRepository.count() == 0) {
-				LocalDateTime now = LocalDateTime.now();
-				Category caPhe = categoryRepository.findByName("Cà phê").orElseGet(() -> categoryRepository.findAll().stream().findFirst().orElseThrow());
-				Category traSua = categoryRepository.findByName("Trà sữa").orElseGet(() -> categoryRepository.findAll().stream().skip(1).findFirst().orElse(caPhe));
+                Map<String, Category> catMap = categoryRepository.findAll().stream()
+                        .collect(Collectors.toMap(Category::getName, c -> c));
 
-				Product p1 = new Product();
-				p1.setCategory(caPhe);
-				p1.setName("Cà phê đen");
-				p1.setImgUrl(null);
-				p1.setSku("CF-DEN");
-				p1.setPrice(new BigDecimal("25000"));
-				p1.setAvailable(true);
-				p1.setStockQty(100);
-				p1.setCreatedAt(now);
-				p1.setUpdatedAt(now);
+                BiFunction<Category, String, String> skuGen = (cat, name) -> {
+                    String prefix = switch (cat.getName()) {
+                        case "Coffee" -> "CF";
+                        case "Milk Tea" -> "MT";
+                        case "Juice" -> "JC";
+                        case "Ice Blended" -> "IB";
+                        case "Yogurt" -> "YG";
+                        case "Others" -> "OT";
+                        case "Food" -> "FD";
+                        case "Cake" -> "CK";
+                        case "Soft Drink" -> "SD";
+                        default -> "XX";
+                    };
+                    return prefix + "-" + name.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+                };
 
-				Product p2 = new Product();
-				p2.setCategory(caPhe);
-				p2.setName("Cà phê sữa");
-				p2.setImgUrl(null);
-				p2.setSku("CF-SUA");
-				p2.setPrice(new BigDecimal("30000"));
-				p2.setAvailable(true);
-				p2.setStockQty(100);
-				p2.setCreatedAt(now);
-				p2.setUpdatedAt(now);
+                List<Product> products = new ArrayList<>();
 
-				Product p3 = new Product();
-				p3.setCategory(traSua);
-				p3.setName("Trà sữa trân châu");
-				p3.setImgUrl(null);
-				p3.setSku("TS-TRANCHAU");
-				p3.setPrice(new BigDecimal("35000"));
-				p3.setAvailable(true);
-				p3.setStockQty(100);
-				p3.setCreatedAt(now);
-				p3.setUpdatedAt(now);
+                // --- Coffee ---
+                products.addAll(List.of(
+                        new Product(catMap.get("Coffee"), "Almond Coffee", skuGen.apply(catMap.get("Coffee"), "Almond Coffee"), new BigDecimal("45000"), "https://i.pinimg.com/736x/22/1b/54/221b545576fc891208fe4b93974f6dba.jpg"),
+                        new Product(catMap.get("Coffee"), "Tiramisu Coffee", skuGen.apply(catMap.get("Coffee"), "Tiramisu Coffee"), new BigDecimal("45000"), "https://i.pinimg.com/736x/5a/0e/89/5a0e8916fa870e199d82c8a7e718bdee.jpg"),
+                        new Product(catMap.get("Coffee"), "KOPI Salty Coffee (Light)", skuGen.apply(catMap.get("Coffee"), "KOPI Salty Coffee Light"), new BigDecimal("39000"), "https://i.pinimg.com/736x/54/b6/69/54b669adf2b32d0dd9ed166114c421ee.jpg"),
+                        new Product(catMap.get("Coffee"), "Hue Salty Coffee (Strong)", skuGen.apply(catMap.get("Coffee"), "Hue Salty Coffee Strong"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/90/8b/47/908b47a4cc7b89e0446495ce81c94dd9.jpg"),
+                        new Product(catMap.get("Coffee"), "Coconut Coffee", skuGen.apply(catMap.get("Coffee"), "Coconut Coffee"), new BigDecimal("50000"), "https://i.pinimg.com/1200x/82/69/73/8269737f8ec6069e4297e66c9a90ab8a.jpg"),
+                        new Product(catMap.get("Coffee"), "Avocado Coffee", skuGen.apply(catMap.get("Coffee"), "Avocado Coffee"), new BigDecimal("50000"), "https://i.pinimg.com/1200x/4f/86/8d/4f868d38bba215cdbb3ee397bc36cc84.jpg"),
+                        new Product(catMap.get("Coffee"), "Americano (Hot)", skuGen.apply(catMap.get("Coffee"), "Americano Hot"), new BigDecimal("35000"), "https://i.pinimg.com/736x/25/9f/7e/259f7e094804371eaf226f287183dcb0.jpg"),
+                        new Product(catMap.get("Coffee"), "Americano (Iced)", skuGen.apply(catMap.get("Coffee"), "Americano Iced"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/bc/0c/ff/bc0cffc8b21c24b4b571e98b9ab5da12.jpg"),
+                        new Product(catMap.get("Coffee"), "Espresso (Black) (Hot)", skuGen.apply(catMap.get("Coffee"), "Espresso Black Hot"), new BigDecimal("35000"), "https://i.pinimg.com/1200x/e8/8c/96/e88c963b93c4ee2f3481b3576e2c9395.jpg"),
+                        new Product(catMap.get("Coffee"), "Espresso (Black) (Iced)", skuGen.apply(catMap.get("Coffee"), "Espresso Black Iced"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/17/4a/4a/174a4aee10877e3122f00274d78dc439.jpg"),
+                        new Product(catMap.get("Coffee"), "Espresso (Milk)", skuGen.apply(catMap.get("Coffee"), "Espresso Milk"), new BigDecimal("39000"), "https://i.pinimg.com/736x/70/cc/03/70cc03ab72020dcb92dce739030bf467.jpg"),
+                        new Product(catMap.get("Coffee"), "Cappuccino", skuGen.apply(catMap.get("Coffee"), "Cappuccino"), new BigDecimal("45000"), "https://i.pinimg.com/736x/f0/65/5f/f0655f2737da76be9b4ac435c65e3d9b.jpg"),
+                        new Product(catMap.get("Coffee"), "Latte", skuGen.apply(catMap.get("Coffee"), "Latte"), new BigDecimal("45000"), "https://i.pinimg.com/736x/e3/83/f9/e383f9aba12fcabbffd116323690fb57.jpg"),
+                        new Product(catMap.get("Coffee"), "Caramel Macchiato", skuGen.apply(catMap.get("Coffee"), "Caramel Macchiato"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/7f/7c/0a/7f7c0a441577459d9a0a01ee28b59cc5.jpg"),
+                        new Product(catMap.get("Coffee"), "Milk Coffee (Hot)", skuGen.apply(catMap.get("Coffee"), "Milk Coffee Hot"), new BigDecimal("35000"), "https://i.pinimg.com/736x/33/17/10/33171068a3f34787c12300512e89a370.jpg"),
+                        new Product(catMap.get("Coffee"), "Milk Coffee (Iced)", skuGen.apply(catMap.get("Coffee"), "Milk Coffee Iced"), new BigDecimal("29000"), "https://i.pinimg.com/736x/cb/e8/81/cbe881824be44f238fb45d8c4c1bd581.jpg"),
+                        new Product(catMap.get("Coffee"), "Black Coffee (Hot)", skuGen.apply(catMap.get("Coffee"), "Black Coffee Hot"), new BigDecimal("29000"), "https://i.pinimg.com/1200x/6a/e4/82/6ae482a0690b8ca89fd3acd554a36d66.jpg"),
+                        new Product(catMap.get("Coffee"), "Black Coffee (Iced)", skuGen.apply(catMap.get("Coffee"), "Black Coffee Iced"), new BigDecimal("35000"), "https://i.pinimg.com/1200x/e2/76/97/e276971d3e3318fa1fc264b2a6346af5.jpg"),
+                        new Product(catMap.get("Coffee"), "Vietnamese Latte (Hot)", skuGen.apply(catMap.get("Coffee"), "Vietnamese Latte Hot"), new BigDecimal("29000"), "https://i.pinimg.com/1200x/2c/9d/97/2c9d972ae2d5bc4eaa07009c3aed54d1.jpg"),
+                        new Product(catMap.get("Coffee"), "Vietnamese Latte (Iced)", skuGen.apply(catMap.get("Coffee"), "Vietnamese Latte Iced"), new BigDecimal("35000"), "https://i.pinimg.com/1200x/5b/e5/5b/5be55b5609db57e252ddcf0b56dc5f71.jpg"),
+                        new Product(catMap.get("Coffee"), "Dalgona Coffee", skuGen.apply(catMap.get("Coffee"), "Dalgona Coffee"), new BigDecimal("35000"), "https://i.pinimg.com/1200x/61/88/00/618800b3379557f85c0936a2a0b9e39f.jpg"),
+                        new Product(catMap.get("Coffee"), "Egg Coffee", skuGen.apply(catMap.get("Coffee"), "Egg Coffee"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/45/9c/9a/459c9ab6a310638c7c4476d3e01c9482.jpg"),
+                        new Product(catMap.get("Coffee"), "Lime Salt Cold Brew", skuGen.apply(catMap.get("Coffee"), "Lime Salt Cold Brew"), new BigDecimal("50000"), "https://i.pinimg.com/1200x/a0/8b/61/a08b618b6bbe45c5f3ae62ffdaff1d7d.jpg"),
+                        new Product(catMap.get("Coffee"), "Orange Cold Brew", skuGen.apply(catMap.get("Coffee"), "Orange Cold Brew"), new BigDecimal("50000"), "https://i.pinimg.com/1200x/48/4d/22/484d22882262b6e556620d5157f06cf0.jpg"),
+                        new Product(catMap.get("Coffee"), "Pineapple Cold Brew", skuGen.apply(catMap.get("Coffee"), "Pineapple Cold Brew"), new BigDecimal("50000"), "https://i.pinimg.com/736x/51/d5/fd/51d5fdc8698ead5617a87f024839c0f5.jpg"),
+                        new Product(catMap.get("Coffee"), "Cold Brew Original", skuGen.apply(catMap.get("Coffee"), "Cold Brew Original"), new BigDecimal("50000"), "https://i.pinimg.com/1200x/3a/39/4b/3a394b88494bcabce6405484182d9d62.jpg")
+                ));
 
-				Product p4 = new Product();
-				p4.setCategory(traSua);
-				p4.setName("Trà sữa matcha");
-				p4.setImgUrl(null);
-				p4.setSku("TS-MATCHA");
-				p4.setPrice(new BigDecimal("40000"));
-				p4.setAvailable(true);
-				p4.setStockQty(100);
-				p4.setCreatedAt(now);
-				p4.setUpdatedAt(now);
+                // --- Milk Tea ---
+                products.addAll(List.of(
+                        new Product(catMap.get("Milk Tea"), "Red Bean Milk Tea", skuGen.apply(catMap.get("Milk Tea"), "Red Bean Milk Tea"), new BigDecimal("45000"), "https://i.pinimg.com/736x/c5/9d/8b/c59d8b34d947ddd4ce284c8fce05611b.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Traditional Milk Tea", skuGen.apply(catMap.get("Milk Tea"), "Traditional Milk Tea"), new BigDecimal("35000"), "https://i.pinimg.com/1200x/33/e2/13/33e2136c478d7c10fff68b3b51bb56d0.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Cream Cheese and Toasted Coconut Milk Tea", skuGen.apply(catMap.get("Milk Tea"), "Cream Cheese Toasted Coconut"), new BigDecimal("42000"), "https://i.pinimg.com/1200x/d3/0e/98/d30e9898a9bd7b5ce6932a8f8a2b2388.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Brown Sugar Bubble Fresh Milk", skuGen.apply(catMap.get("Milk Tea"), "Brown Sugar Bubble"), new BigDecimal("39000"), "https://i.pinimg.com/736x/81/a4/bb/81a4bbf789dc005db307140990fcad69.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Peach Jelly Tea", skuGen.apply(catMap.get("Milk Tea"), "Peach Jelly Tea"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/cd/37/96/cd37960b5daf591ee805483a33e13809.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Orange Lemongrass Peach Tea", skuGen.apply(catMap.get("Milk Tea"), "Orange Lemongrass Peach"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/bb/cc/41/bbcc4105999458179debf09501ae30c2.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Lychee Lotus Tea", skuGen.apply(catMap.get("Milk Tea"), "Lychee Lotus Tea"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/7d/3a/1b/7d3a1b0801edd4098104175c4825ddbf.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Lotus Tea With Cheese Foam", skuGen.apply(catMap.get("Milk Tea"), "Lotus Tea Cheese Foam"), new BigDecimal("42000"), "https://i.pinimg.com/1200x/b8/e4/bc/b8e4bc2f7c22acfeced58a4bc9e8b46b.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Mango Passion Fruit Iced Tea", skuGen.apply(catMap.get("Milk Tea"), "Mango Passion Fruit"), new BigDecimal("45000"), "https://i.pinimg.com/736x/61/59/ee/6159eebea819fd740debf4430a8e0f6b.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Honey Ginger Tea (Hot)", skuGen.apply(catMap.get("Milk Tea"), "Honey Ginger Tea"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/6e/9a/03/6e9a0343ac44d93c99f7e19584579116.jpg"),
+                        new Product(catMap.get("Milk Tea"), "Herbal Tea (Hot)", skuGen.apply(catMap.get("Milk Tea"), "Herbal Tea"), new BigDecimal("50000"), "https://i.pinimg.com/1200x/cc/b9/75/ccb975efccaf0cb3ff403ea6e4993ae0.jpg")
+                ));
 
-				productRepository.save(p1);
-				productRepository.save(p2);
-				productRepository.save(p3);
-				productRepository.save(p4);
-			}
+                // 🧃 Juice
+                products.addAll(List.of(
+                        new Product(catMap.get("Juice"), "Detox Celery, Pineapple, Lemon, Honey", skuGen.apply(catMap.get("Juice"), "Detox Celery Pineapple Lemon Honey"), new BigDecimal("45000"), "https://i.pinimg.com/736x/24/92/64/24926487d9238bc41c1b5295c2b2dbbe.jpg"),
+                        new Product(catMap.get("Juice"), "Lemon Juice with Honey and Chia Seed", skuGen.apply(catMap.get("Juice"), "Lemon Juice Honey Chia"), new BigDecimal("39000"), "https://i.pinimg.com/736x/c1/ca/56/c1ca56b003402e569085e0ce3a42cbdc.jpg"),
+                        new Product(catMap.get("Juice"), "Coconut Juice", skuGen.apply(catMap.get("Juice"), "Coconut Juice"), new BigDecimal("39000"), "https://i.pinimg.com/736x/2c/36/63/2c3663c29b96f9f3ed7b00f702fe67f3.jpg"),
+                        new Product(catMap.get("Juice"), "Pineapple Juice", skuGen.apply(catMap.get("Juice"), "Pineapple Juice"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/b9/e4/e8/b9e4e87b2ca8129b803987b6e9be77e9.jpg"),
+                        new Product(catMap.get("Juice"), "Watermelon Juice", skuGen.apply(catMap.get("Juice"), "Watermelon Juice"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/bb/9f/e3/bb9fe38e7ef6c818e93e07eebc608b1b.jpg"),
+                        new Product(catMap.get("Juice"), "Passion Fruit Juice", skuGen.apply(catMap.get("Juice"), "Passion Fruit Juice"), new BigDecimal("39000"), "https://i.pinimg.com/736x/21/8c/b0/218cb03d12ab90518a435536c17f03e2.jpg"),
+                        new Product(catMap.get("Juice"), "Orange Juice", skuGen.apply(catMap.get("Juice"), "Orange Juice"), new BigDecimal("45000"), "https://i.pinimg.com/736x/f8/56/5b/f8565b7442a9df396adc387c8555d8b4.jpg")
+                ));
+
+                // 🍨 Ice Blended
+                products.addAll(List.of(
+                        new Product(catMap.get("Ice Blended"), "Matcha Jelly", skuGen.apply(catMap.get("Ice Blended"), "Matcha Jelly"), new BigDecimal("45000"), "https://i.pinimg.com/736x/67/10/fe/6710fea39a037746366f9994ab018bf1.jpg"),
+                        new Product(catMap.get("Ice Blended"), "Caramel Jelly", skuGen.apply(catMap.get("Ice Blended"), "Caramel Jelly"), new BigDecimal("45000"), "https://i.pinimg.com/736x/28/82/fc/2882fcfe56f66a50981205cebf3d3e9a.jpg"),
+                        new Product(catMap.get("Ice Blended"), "Choco Jelly", skuGen.apply(catMap.get("Ice Blended"), "Choco Jelly"), new BigDecimal("45000"), "https://i.pinimg.com/736x/5d/cf/39/5dcf39492571515b97407fafebd16df6.jpg"),
+                        new Product(catMap.get("Ice Blended"), "Chocolate Cookie (Oreo)", skuGen.apply(catMap.get("Ice Blended"), "Chocolate Cookie Oreo"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/15/80/4e/15804e381f8e4aca5742f0c17de6a66d.jpg"),
+                        new Product(catMap.get("Ice Blended"), "Matcha Cookie (Oreo)", skuGen.apply(catMap.get("Ice Blended"), "Matcha Cookie Oreo"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/39/12/ac/3912acb1357b9278e549652fb814d243.jpg")
+                ));
+
+                // 🍶 Yogurt
+                products.addAll(List.of(
+                        new Product(catMap.get("Yogurt"), "Mango Yogurt", skuGen.apply(catMap.get("Yogurt"), "Mango Yogurt"), new BigDecimal("42000"), "https://i.pinimg.com/1200x/2b/8a/1d/2b8a1d4aea74c71ede87adc55f4c2d8a.jpg"),
+                        new Product(catMap.get("Yogurt"), "Peach Yogurt", skuGen.apply(catMap.get("Yogurt"), "Peach Yogurt"), new BigDecimal("42000"), "https://i.pinimg.com/736x/8d/5f/e2/8d5fe2f8f6d418145b77487e6bbb906d.jpg"),
+                        new Product(catMap.get("Yogurt"), "Strawberry Yogurt", skuGen.apply(catMap.get("Yogurt"), "Strawberry Yogurt"), new BigDecimal("42000"), "https://i.pinimg.com/736x/16/ed/d4/16edd421d8996d8b45bf83c0ba0c325b.jpg"),
+                        new Product(catMap.get("Yogurt"), "Blueberry Yogurt", skuGen.apply(catMap.get("Yogurt"), "Blueberry Yogurt"), new BigDecimal("42000"), "https://i.pinimg.com/736x/a6/50/75/a6507523db3777896adea88e5ed6b987.jpg")
+                ));
+
+                // 🍧 Others
+                products.addAll(List.of(
+                        new Product(catMap.get("Others"), "Coconut Red Bean", skuGen.apply(catMap.get("Others"), "Coconut Red Bean"), new BigDecimal("45000"), "https://i.pinimg.com/736x/74/2f/5e/742f5ec967a30a895298796b256cf903.jpg"),
+                        new Product(catMap.get("Others"), "Matcha Latte", skuGen.apply(catMap.get("Others"), "Matcha Latte"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/68/c3/39/68c339de45f7b5efebf7041748c3fdc1.jpg"),
+                        new Product(catMap.get("Others"), "Chocolate", skuGen.apply(catMap.get("Others"), "Chocolate"), new BigDecimal("39000"), "https://i.pinimg.com/1200x/ee/40/03/ee4003aba030698d738680991f5d9b8a.jpg"),
+                        new Product(catMap.get("Others"), "Fresh Milk", skuGen.apply(catMap.get("Others"), "Fresh Milk"), new BigDecimal("39000"), "https://i.pinimg.com/736x/31/0a/6b/310a6b08c926de4ae7c9fcdad047be83.jpg")
+                ));
+
+                // 🍔 Food
+                products.addAll(List.of(
+                        new Product(catMap.get("Food"), "Beef Spaghetti", skuGen.apply(catMap.get("Food"), "Beef Spaghetti"), new BigDecimal("65000"), "https://i.pinimg.com/736x/5f/b9/ca/5fb9ca7393ac6c9d3c209c73d7f0999c.jpg"),
+                        new Product(catMap.get("Food"), "Chicken Spaghetti", skuGen.apply(catMap.get("Food"), "Chicken Spaghetti"), new BigDecimal("65000"), "https://i.pinimg.com/1200x/50/74/be/5074becbd85825b9c4e434471111359d.jpg"),
+                        new Product(catMap.get("Food"), "Egg Toast", skuGen.apply(catMap.get("Food"), "Egg Toast"), new BigDecimal("35000"), "https://i.pinimg.com/1200x/be/63/4c/be634c424a9739f6cebd922860f20c25.jpg"),
+                        new Product(catMap.get("Food"), "Tuna Toast", skuGen.apply(catMap.get("Food"), "Tuna Toast"), new BigDecimal("45000"), "https://i.pinimg.com/736x/45/47/7b/45477b69048dfdfe535c90867a08eb2c.jpg"),
+                        new Product(catMap.get("Food"), "Ham Toast", skuGen.apply(catMap.get("Food"), "Ham Toast"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/d1/08/0c/d1080c7cbb94c43c980e36464af8902b.jpg")
+                ));
+
+                // 🍰 Cake
+                products.addAll(List.of(
+                        new Product(catMap.get("Cake"), "Tiramisu", skuGen.apply(catMap.get("Cake"), "Tiramisu"), new BigDecimal("39000"), "https://i.pinimg.com/736x/0e/c2/89/0ec289492947872976c5c52215280faa.jpg"),
+                        new Product(catMap.get("Cake"), "Matcha Mousse", skuGen.apply(catMap.get("Cake"), "Matcha Mousse"), new BigDecimal("39000"), "https://i.pinimg.com/736x/d9/69/46/d96946685466a74796463ac2860c30aa.jpg"),
+                        new Product(catMap.get("Cake"), "Blueberry Cheese", skuGen.apply(catMap.get("Cake"), "Blueberry Cheese"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/41/0d/d9/410dd90f76570122d9276d74dc551cfd.jpg"),
+                        new Product(catMap.get("Cake"), "Passion Fruit Cheese", skuGen.apply(catMap.get("Cake"), "Passion Fruit Cheese"), new BigDecimal("45000"), "https://i.pinimg.com/1200x/a3/a5/a8/a3a5a87e36a2f6ec17f686d3d1e7ce19.jpg")
+                ));
+
+                // 🥤 Soft Drink
+                products.addAll(List.of(
+                        new Product(catMap.get("Soft Drink"), "Coca Cola", skuGen.apply(catMap.get("Soft Drink"), "Coca Cola"), new BigDecimal("20000"), "https://i.pinimg.com/1200x/cf/29/04/cf2904a920ba034d48402aa4c1aabae7.jpg"),
+                        new Product(catMap.get("Soft Drink"), "Pepsi", skuGen.apply(catMap.get("Soft Drink"), "Pepsi"), new BigDecimal("20000"), "https://i.pinimg.com/1200x/56/77/83/56778331576a589e4766f600eedbaf35.jpg"),
+                        new Product(catMap.get("Soft Drink"), "7Up", skuGen.apply(catMap.get("Soft Drink"), "7Up"), new BigDecimal("20000"), "https://i.pinimg.com/736x/5d/f2/7e/5df27e9844d06b24f7a2144cf9308f3a.jpg"),
+                        new Product(catMap.get("Soft Drink"), "Evian Water", skuGen.apply(catMap.get("Soft Drink"), "Evian Water"), new BigDecimal("15000"), "https://i.pinimg.com/736x/17/bc/6b/17bc6ba3aa2b4af918dc18421d51461b.jpg")
+                ));
+
+                // Add timestamps and active flag
+                products.forEach(p -> {
+                    p.setActive(true);
+                    p.setCreatedAt(now);
+                });
+
+                productRepository.saveAll(products);
+            }
+
 
             // Seed dining tables (exact values, including timestamps and QR tokens)
             if (diningTableRepository.count() == 0) {
