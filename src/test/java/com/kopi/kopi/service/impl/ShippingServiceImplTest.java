@@ -4,6 +4,7 @@ import com.kopi.kopi.entity.OrderEntity;
 import com.kopi.kopi.entity.User;
 import com.kopi.kopi.repository.OrderRepository;
 import com.kopi.kopi.repository.UserRepository;
+import com.kopi.kopi.repository.AddressRepository;
 import com.kopi.kopi.service.ShippingLocationStore;
 import com.kopi.kopi.service.ShippingLocationStore.Location;
 import org.junit.jupiter.api.*;
@@ -28,18 +29,13 @@ class ShippingServiceImplTest {
     private OrderRepository orderRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private AddressRepository addressRepository;
+    @Mock
+    private MapboxService mapbox;
 
+    @InjectMocks
     private ShippingServiceImpl service;
-
-    @BeforeEach
-    void setUp() {
-        service = new ShippingServiceImpl(store, orderRepository, userRepository);
-    }
-
-    @AfterEach
-    void tearDown() {
-        // no-op
-    }
 
     // ========= updateLocation =========
 
@@ -107,6 +103,11 @@ class ShippingServiceImplTest {
     void should_ReturnCoordinates_When_LocationExists_AndRoleIsStaff() {
         // Given (non-customer path → không cần kiểm tra belong)
         when(store.get(77)).thenReturn(new Location(10.5, 20.6, 123));
+        OrderEntity order = mock(OrderEntity.class);
+        User shipper = new User();
+        shipper.setUserId(123);
+        when(order.getShipper()).thenReturn(shipper);
+        when(orderRepository.findById(77)).thenReturn(Optional.of(order));
 
         // When
         ResponseEntity<?> resp = service.getLocation(77, "ROLE_STAFF", 123);
@@ -122,6 +123,11 @@ class ShippingServiceImplTest {
     void should_ReturnNullData_When_LocationMissing() {
         // Given
         when(store.get(88)).thenReturn(null);
+        OrderEntity order = mock(OrderEntity.class);
+        User shipper = new User();
+        shipper.setUserId(1);
+        when(order.getShipper()).thenReturn(shipper);
+        when(orderRepository.findById(88)).thenReturn(Optional.of(order));
 
         // When / Then: production currently uses Map.of(...) and will throw when trying
         // to put nulls,
@@ -171,6 +177,9 @@ class ShippingServiceImplTest {
         when(address.getLongitude()).thenReturn(22.22);
 
         OrderEntity order = mock(OrderEntity.class);
+        User shipper = new User();
+        shipper.setUserId(1);
+        when(order.getShipper()).thenReturn(shipper);
         when(orderRepository.findById(3)).thenReturn(Optional.of(order));
         when(order.getAddress()).thenReturn(address);
 
@@ -193,6 +202,9 @@ class ShippingServiceImplTest {
         when(address.getAddressLine()).thenReturn("");
         when(address.getLatitude()).thenReturn(0.0);
         when(address.getLongitude()).thenReturn(0.0);
+        User shipper = new User();
+        shipper.setUserId(1);
+        when(order.getShipper()).thenReturn(shipper);
         when(orderRepository.findById(4)).thenReturn(Optional.of(order));
         when(order.getAddress()).thenReturn(address);
 
