@@ -229,6 +229,36 @@ public class DataInit {
                 diningTableRepository.saveAll(Arrays.asList(tables));
             }
 
+            // Seed positions FIRST to ensure we have deterministic IDs (1=Cashier, 4=Shipper)
+            if (positionRepository.count() == 0) {
+                LocalDateTime now = LocalDateTime.now();
+                Position cashier = Position.builder()
+                        .positionName("Cashier")
+                        .description("Nhân viên thu ngân")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+                Position waiter = Position.builder()
+                        .positionName("Waiter")
+                        .description("Nhân viên phục vụ")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+                Position barista = Position.builder()
+                        .positionName("Barista")
+                        .description("Nhân viên pha chế")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+                Position shipper = Position.builder()
+                        .positionName("Shipper")
+                        .description("Nhân viên giao hàng")
+                        .isActive(true)
+                        .createdAt(now)
+                        .build();
+                positionRepository.saveAll(Arrays.asList(cashier, waiter, barista, shipper));
+            }
+
             // Seed users
 			if (userRepository.count() < 4) {
                 LocalDateTime now = LocalDateTime.now();
@@ -298,36 +328,6 @@ public class DataInit {
 				customer.setUpdatedAt(now);
 				userRepository.save(customer);
 			}
-			
-            // Seed positions
-            if (positionRepository.count() == 0) {
-                LocalDateTime now = LocalDateTime.now();
-                Position cashier = Position.builder()
-                        .positionName("Cashier")
-                        .description("Nhân viên thu ngân")
-                        .isActive(true)
-                        .createdAt(now)
-                        .build();
-                Position waiter = Position.builder()
-                        .positionName("Waiter")
-                        .description("Nhân viên phục vụ")
-                        .isActive(true)
-                        .createdAt(now)
-                        .build();
-                Position barista = Position.builder()
-                        .positionName("Barista")
-                        .description("Nhân viên pha chế")
-                        .isActive(true)
-                        .createdAt(now)
-                        .build();
-				Position shipper = Position.builder()
-                        .positionName("Shipper")
-                        .description("Nhân viên giao hàng")
-                        .isActive(true)
-                        .createdAt(now)
-                        .build();
-                positionRepository.saveAll(Arrays.asList(cashier, waiter, barista, shipper));
-            }
 
             // Seed sample completed orders for the seeded customer
 			if (orderRepository.count() == 0) {
@@ -343,6 +343,8 @@ public class DataInit {
 						order.setCustomer(customer);
 						order.setStatus("COMPLETED");
 						order.setSubtotalAmount(prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO);
+						// Ensure non-null shipping for DB constraint (nullable=false)
+						order.setShippingAmount(BigDecimal.ZERO);
 						order.setDiscountAmount(BigDecimal.ZERO);
 						order.setNote("Seed order " + (i + 1));
 						order.setCreatedAt(now);
