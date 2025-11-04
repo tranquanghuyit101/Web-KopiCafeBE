@@ -81,9 +81,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public ResponseEntity<?> getTransactionDetail(Integer id, Integer userId) {
+    public ResponseEntity<?> getTransactionDetail(Integer id, User current) {
         OrderEntity o = orderRepository.findById(id).orElseThrow();
-        if (o.getCustomer() == null || !Objects.equals(o.getCustomer().getUserId(), userId)) {
+        boolean isOwner = (o.getCustomer() != null && current != null && Objects.equals(o.getCustomer().getUserId(), current.getUserId()));
+        String roleName = current != null && current.getRole() != null ? current.getRole().getName() : null;
+        boolean isStaff = roleName != null && (roleName.equalsIgnoreCase("ADMIN") || roleName.equalsIgnoreCase("EMPLOYEE"));
+        if (!isOwner && !isStaff) {
             return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
         }
 
@@ -107,7 +110,8 @@ public class OrderServiceImpl implements OrderService {
         detail.put("payment_name", paymentName);
         detail.put("payment_fee", paymentFee);
 
-        detail.put("delivery_name", "");
+        String deliveryName = o.getAddress() != null ? "Shipping" : (o.getTable() != null ? ("Table " + o.getTable().getNumber()) : "");
+        detail.put("delivery_name", deliveryName);
         detail.put("delivery_fee", BigDecimal.ZERO);
         detail.put("grand_total", defaultBigDecimal(o.getTotalAmount()));
 

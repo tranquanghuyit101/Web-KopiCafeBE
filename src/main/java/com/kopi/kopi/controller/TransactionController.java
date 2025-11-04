@@ -33,8 +33,8 @@ public class TransactionController {
     @GetMapping("/transactions/{id}")
     public ResponseEntity<?> getTransactionDetail(@PathVariable("id") Integer id) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
-        return orderService.getTransactionDetail(id, userId);
+        User current = ((UserPrincipal) auth.getPrincipal()).getUser();
+        return orderService.getTransactionDetail(id, current);
     }
 
     @GetMapping("/transactions")
