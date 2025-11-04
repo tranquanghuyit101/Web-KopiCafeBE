@@ -430,23 +430,80 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
                 return false;
             }
             
+            // REJECT: Video về công nghệ, điện thoại, máy tính, phần mềm (ưu tiên cao)
+            boolean isTechRelated = 
+                title.contains("điện thoại") || title.contains("smartphone") || title.contains("android") ||
+                title.contains("iphone") || title.contains("ios") || title.contains("app ") ||
+                title.contains("ứng dụng") || title.contains("software") || title.contains("phần mềm") ||
+                title.contains("laptop") || title.contains("máy tính") || title.contains("computer") ||
+                title.contains("giải phóng dung lượng") || title.contains("tăng tốc độ") ||
+                title.contains("ram") || title.contains("cpu") || title.contains("gpu") ||
+                title.contains("chip") || title.contains("bộ nhớ") || title.contains("storage") ||
+                title.contains("mạng") || title.contains("wifi") || title.contains("bluetooth") ||
+                title.contains("pin") && title.contains("tiết kiệm") || title.contains("battery") ||
+                title.contains("màn hình") || title.contains("screen") || title.contains("display") ||
+                title.contains("camera") && !title.contains("cà phê") || title.contains("gaming") ||
+                title.contains("card đồ họa") || title.contains("graphics card") ||
+                title.contains("driver") || title.contains("firmware") || title.contains("update") ||
+                title.contains("root") || title.contains("jailbreak") || title.contains("hack") ||
+                title.contains("virus") || title.contains("malware") || title.contains("security") ||
+                title.contains("bảo mật") || title.contains("privacy") || title.contains("quyền riêng tư") ||
+                title.contains("download") || title.contains("tải về") || title.contains("cài đặt") ||
+                title.contains("install") || title.contains("uninstall") || title.contains("gỡ bỏ");
+            
+            // CHỈ ACCEPT tech NẾU có từ liên quan đến đồ uống/công thức
+            if (isTechRelated && !title.contains("cà phê") && !title.contains("coffee") && 
+                !title.contains("trà") && !title.contains("tea") && !title.contains("drink") &&
+                !title.contains("recipe") && !title.contains("công thức") && !title.contains("cách làm")) {
+                System.out.println("[Filter] REJECTED (tech/phone): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video về ô tô, xe máy, phương tiện
+            boolean isVehicleRelated = 
+                title.contains("xe máy") || title.contains("xe đạp") || title.contains("ô tô") ||
+                title.contains("motorbike") || title.contains("car") || title.contains("vehicle") ||
+                title.contains("honda") || title.contains("yamaha") || title.contains("suzuki") ||
+                title.contains("tay ga") || title.contains("số") && title.contains("xe") ||
+                title.contains("độ xe") || title.contains("sửa xe") || title.contains("maintenance");
+            
+            if (isVehicleRelated && !title.contains("cà phê") && !title.contains("coffee") && 
+                !title.contains("trà") && !title.contains("tea") && !title.contains("drink")) {
+                System.out.println("[Filter] REJECTED (vehicle): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video về làm đẹp, mỹ phẩm (không liên quan đồ uống)
+            boolean isBeautyRelated = 
+                title.contains("mỹ phẩm") || title.contains("makeup") || title.contains("son") ||
+                title.contains("kem") && (title.contains("dưỡng") || title.contains("chống nắng")) ||
+                title.contains("serum") || title.contains("toner") || title.contains("essence") ||
+                title.contains("mặt nạ") || title.contains("mask") || title.contains("cleanser") ||
+                title.contains("trang điểm") || title.contains("tutorial makeup") ||
+                title.contains("skincare") || title.contains("chăm sóc da");
+            
+            if (isBeautyRelated && !title.contains("kem trứng") && !title.contains("kem cheese") &&
+                !title.contains("ice cream") && !title.contains("whipped cream")) {
+                System.out.println("[Filter] REJECTED (beauty/cosmetic): " + v.getTitle());
+                return false;
+            }
+            
+            // REJECT: Video về giáo dục, học tập (không liên quan)
+            boolean isEducationRelated = 
+                title.contains("học tiếng") || title.contains("learn") && title.contains("language") ||
+                title.contains("giáo dục") || title.contains("education") || title.contains("tutorial") && 
+                (title.contains("math") || title.contains("toán") || title.contains("programming") ||
+                 title.contains("lập trình") || title.contains("coding") || title.contains("code"));
+            
+            if (isEducationRelated && !title.contains("cà phê") && !title.contains("coffee") && 
+                !title.contains("trà") && !title.contains("tea") && !title.contains("drink")) {
+                System.out.println("[Filter] REJECTED (education unrelated): " + v.getTitle());
+                return false;
+            }
+            
             // ===== BƯỚC 2: ACCEPT video về recipe/tutorial/giới thiệu =====
             
-            // Từ khóa MẠNH về recipe/tutorial (ưu tiên cao)
-            boolean hasStrongRecipeKeyword = 
-                title.contains("cách làm") || title.contains("cách pha") || title.contains("recipe") || 
-                title.contains("how to make") || title.contains("hướng dẫn") || 
-                title.contains("công thức") || title.contains("pha chế") ||
-                title.contains("bí quyết") || title.contains("mẹo") || title.contains("tips") ||
-                title.contains("diy") || title.contains("homemade") || title.contains("tự làm");
-            
-            // Từ khóa về giới thiệu/review món (medium)
-            boolean hasIntroKeyword = 
-                title.contains("giới thiệu") || title.contains("thử") || title.contains("review món") ||
-                title.contains("món mới") || title.contains("hot trend") || title.contains("viral") ||
-                title.contains("trải nghiệm") && text.contains(dishLower);
-            
-            // Kiểm tra xem title có chứa tên món không
+            // Kiểm tra xem title có chứa tên món không (phải kiểm tra TRƯỚC)
             String[] dishKeywords = dishLower.split("\\s+");
             boolean hasDishKeyword = false;
             for (String keyword : dishKeywords) {
@@ -456,10 +513,34 @@ public class AiSuggestServiceImpl implements IAiSuggestService {
                 }
             }
             
+            // Kiểm tra từ khóa về đồ uống phổ biến (fallback nếu tên món không match)
+            boolean hasDrinkKeyword = 
+                title.contains("cà phê") || title.contains("coffee") || title.contains("trà") || 
+                title.contains("tea") || title.contains("latte") || title.contains("matcha") ||
+                title.contains("smoothie") || title.contains("juice") || title.contains("nước ép") ||
+                title.contains("milkshake") || title.contains("sữa") || title.contains("milk") ||
+                title.contains("drink") || title.contains("đồ uống") || title.contains("beverage");
+            
+            // Từ khóa MẠNH về recipe/tutorial (ưu tiên cao)
+            // Lưu ý: "hướng dẫn" chỉ hợp lệ nếu có từ khóa đồ uống/công thức
+            boolean hasStrongRecipeKeyword = 
+                title.contains("cách làm") || title.contains("cách pha") || title.contains("recipe") || 
+                title.contains("how to make") || 
+                (title.contains("hướng dẫn") && (hasDishKeyword || hasDrinkKeyword || title.contains("công thức"))) ||
+                title.contains("công thức") || title.contains("pha chế") ||
+                title.contains("bí quyết") || title.contains("mẹo") || title.contains("tips") ||
+                title.contains("diy") || title.contains("homemade") || title.contains("tự làm");
+            
+            // Từ khóa về giới thiệu/review món (medium)
+            boolean hasIntroKeyword = 
+                title.contains("giới thiệu") || title.contains("thử") || title.contains("review món") ||
+                title.contains("món mới") || title.contains("hot trend") || title.contains("viral") ||
+                (title.contains("trải nghiệm") && text.contains(dishLower));
+            
             // LOGIC ACCEPT:
-            // 1. Có từ khóa recipe MẠNH → ACCEPT ngay
-            if (hasStrongRecipeKeyword) {
-                System.out.println("[Filter] ACCEPTED (strong recipe keyword): " + v.getTitle());
+            // 1. Có từ khóa recipe MẠNH + (tên món HOẶC từ khóa đồ uống) → ACCEPT
+            if (hasStrongRecipeKeyword && (hasDishKeyword || hasDrinkKeyword)) {
+                System.out.println("[Filter] ACCEPTED (strong recipe keyword + drink keyword): " + v.getTitle());
                 return true;
             }
             
