@@ -112,7 +112,7 @@ public class OrderServiceImpl implements OrderService {
 
         String deliveryName = o.getAddress() != null ? "Shipping" : (o.getTable() != null ? ("Table " + o.getTable().getNumber()) : "");
         detail.put("delivery_name", deliveryName);
-        detail.put("delivery_fee", BigDecimal.ZERO);
+        detail.put("delivery_fee", defaultBigDecimal(o.getShippingAmount()));
         detail.put("grand_total", defaultBigDecimal(o.getTotalAmount()));
 
         List<Map<String, Object>> products = new ArrayList<>();
@@ -375,11 +375,20 @@ public class OrderServiceImpl implements OrderService {
             else shippingFee = new BigDecimal("50000");
         }
 
+        // Discount: accept optional discount_amount from body (fallback to 0)
+        BigDecimal discount = BigDecimal.ZERO;
+        if (body.containsKey("discount_amount") && body.get("discount_amount") != null) {
+            try { discount = new BigDecimal(String.valueOf(body.get("discount_amount"))); } catch (Exception ignored) {}
+        }
+        if (discount.compareTo(BigDecimal.ZERO) < 0) discount = BigDecimal.ZERO;
+        if (discount.compareTo(subtotal) > 0) discount = subtotal;
+
         OrderEntity order = OrderEntity.builder()
                 .orderCode("ORD-" + System.currentTimeMillis())
                 .status(paid ? "COMPLETED" : "PENDING")
-                .subtotalAmount(subtotal.add(shippingFee))
-                .discountAmount(BigDecimal.ZERO)
+                .subtotalAmount(subtotal)
+                .shippingAmount(shippingFee)
+                .discountAmount(discount)
                 .note(notes)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -398,7 +407,7 @@ public class OrderServiceImpl implements OrderService {
             if (paymentId == 2) method = PaymentMethod.BANKING;
             Payment payment = Payment.builder()
                     .order(order)
-                    .amount(subtotal.add(shippingFee))
+                    .amount(subtotal.subtract(discount).add(shippingFee))
                     .method(method)
                     .status(paid ? PaymentStatus.PAID : PaymentStatus.PENDING)
                     .createdAt(LocalDateTime.now())
@@ -469,6 +478,7 @@ public class OrderServiceImpl implements OrderService {
                 .orderCode("ORD-" + System.currentTimeMillis())
                 .status(Boolean.TRUE.equals(req.paid()) ? "COMPLETED" : "PENDING")
                 .subtotalAmount(subtotal)
+                .shippingAmount(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .note(req.notes())
                 .createdAt(LocalDateTime.now())
