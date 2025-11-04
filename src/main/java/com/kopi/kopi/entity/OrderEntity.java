@@ -47,6 +47,9 @@ public class OrderEntity {
 	@Column(name = "subtotal_amount", nullable = false, precision = 18, scale = 2)
 	private BigDecimal subtotalAmount;
 
+	@Column(name = "shipping_amount", nullable = false, precision = 18, scale = 2)
+	private BigDecimal shippingAmount;
+
 	@Column(name = "discount_amount", nullable = false, precision = 18, scale = 2)
 	private BigDecimal discountAmount;
 

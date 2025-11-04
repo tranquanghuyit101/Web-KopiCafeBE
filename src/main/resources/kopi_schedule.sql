@@ -100,7 +100,8 @@ CREATE TABLE dbo.orders (
     close_reason       NVARCHAR(500) NULL,
     subtotal_amount    DECIMAL(18,2) NOT NULL,
     discount_amount    DECIMAL(18,2) NOT NULL,
-    total_amount       AS (CONVERT(DECIMAL(18,2), subtotal_amount - discount_amount)) PERSISTED,
+    shipping_amount    DECIMAL(18,2) NOT NULL,
+    total_amount       AS (CONVERT(DECIMAL(18,2), subtotal_amount - discount_amount + shipping_amount)) PERSISTED,
     note               NVARCHAR(500) NULL,
     created_at         DATETIME2(3)  NOT NULL,
     updated_at         DATETIME2(3)  NOT NULL,
@@ -417,6 +418,9 @@ ALTER TABLE dbo.payments
 
  -- Removed CHECK for dbo.schedules
 
+ALTER TABLE dbo.orders
+    ADD CONSTRAINT CK_orders_shipping_amount CHECK (shipping_amount >= 0);
+
 ALTER TABLE dbo.inventory_log
     ADD CONSTRAINT CK_inventory_log_type CHECK (change_type IN (N'IN', N'OUT', N'ADJUST')),
         CONSTRAINT CK_inventory_log_qty CHECK (quantity_change <> 0);
@@ -503,6 +507,9 @@ ALTER TABLE dbo.orders
         CONSTRAINT DF_orders_discount DEFAULT (0) FOR discount_amount,
         CONSTRAINT DF_orders_created_at DEFAULT SYSUTCDATETIME() FOR created_at,
         CONSTRAINT DF_orders_updated_at DEFAULT SYSUTCDATETIME() FOR updated_at;
+
+ALTER TABLE dbo.orders
+    ADD CONSTRAINT DF_orders_shipping DEFAULT (0) FOR shipping_amount;
 
 ALTER TABLE dbo.payments
     ADD CONSTRAINT DF_payments_status DEFAULT (N'pending') FOR status,

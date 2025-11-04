@@ -8,7 +8,7 @@ import java.util.Map;
 
 public interface OrderService {
     Map<String, Object> getUserTransactions(Integer userId, Integer page, Integer limit);
-    ResponseEntity<?> getTransactionDetail(Integer id, Integer userId);
+    ResponseEntity<?> getTransactionDetail(Integer id, User current);
     Map<String, Object> listPending(String status, String type, Integer page, Integer limit);
     ResponseEntity<?> changeStatus(Integer id, Map<String, Object> payload);
     ResponseEntity<?> createTransaction(Map<String, Object> body, User current);
