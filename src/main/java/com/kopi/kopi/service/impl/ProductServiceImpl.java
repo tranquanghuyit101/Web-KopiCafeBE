@@ -2,8 +2,12 @@ package com.kopi.kopi.service.impl;
 
 import com.kopi.kopi.entity.Category;
 import com.kopi.kopi.entity.Product;
+import com.kopi.kopi.entity.ProductAddOn;
+import com.kopi.kopi.entity.ProductSize;
 import com.kopi.kopi.repository.CategoryRepository;
+import com.kopi.kopi.repository.ProductAddOnRepository;
 import com.kopi.kopi.repository.ProductRepository;
+import com.kopi.kopi.repository.ProductSizeRepository;
 import com.kopi.kopi.service.ProductService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -22,10 +26,14 @@ import java.util.Map;
 public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final ProductSizeRepository productSizeRepository;
+    private final ProductAddOnRepository productAddOnRepository;
 
-    public ProductServiceImpl(ProductRepository productRepository, CategoryRepository categoryRepository) {
+    public ProductServiceImpl(ProductRepository productRepository, CategoryRepository categoryRepository, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
+        this.productSizeRepository = productSizeRepository;
+        this.productAddOnRepository = productAddOnRepository;
     }
 
     @Override
@@ -86,6 +94,42 @@ public class ProductServiceImpl implements ProductService {
         item.put("stock", p.getStockQty());
         item.put("desc", p.getDescription());
         item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
+        // sizes from DB (available only), include delta and computed price
+        try {
+            List<Map<String, Object>> sizes = new ArrayList<>();
+            for (ProductSize ps : productSizeRepository.findByProduct_ProductIdAndAvailableTrue(p.getProductId())) {
+                var s = ps.getSize();
+                Map<String, Object> m = new HashMap<>();
+                m.put("size_id", s != null ? s.getSizeId() : null);
+                m.put("name", s != null ? s.getName() : null);
+                m.put("code", s != null ? s.getCode() : null);
+                BigDecimal base = p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO;
+                BigDecimal delta = ps.getPrice() != null ? ps.getPrice() : BigDecimal.ZERO;
+                m.put("price_delta", delta);
+                m.put("price", base.add(delta));
+                m.put("available", Boolean.TRUE.equals(ps.getAvailable()));
+                sizes.add(m);
+            }
+            item.put("sizes", sizes);
+        } catch (Exception ignored) {
+            item.put("sizes", List.of());
+        }
+        // add-ons from DB (available only)
+        try {
+            List<Map<String, Object>> addons = new ArrayList<>();
+            for (ProductAddOn pa : productAddOnRepository.findByProduct_ProductIdAndAvailableTrue(p.getProductId())) {
+                var a = pa.getAddOn();
+                Map<String, Object> m = new HashMap<>();
+                m.put("add_on_id", a != null ? a.getAddOnId() : null);
+                m.put("name", a != null ? a.getName() : null);
+                m.put("price", pa.getPrice() != null ? pa.getPrice() : BigDecimal.ZERO);
+                m.put("available", Boolean.TRUE.equals(pa.getAvailable()));
+                addons.add(m);
+            }
+            item.put("add_ons", addons);
+        } catch (Exception ignored) {
+            item.put("add_ons", List.of());
+        }
         return Map.of("data", List.of(item));
     }
 
