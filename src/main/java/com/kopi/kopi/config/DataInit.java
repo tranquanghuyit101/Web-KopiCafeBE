@@ -32,6 +32,12 @@ import com.kopi.kopi.repository.ProductSizeRepository;
 import com.kopi.kopi.repository.ProductAddOnRepository;
 import com.kopi.kopi.repository.SizeRepository;
 import com.kopi.kopi.repository.AddOnRepository;
+import com.kopi.kopi.repository.DiscountCodeRepository;
+import com.kopi.kopi.repository.DiscountEventRepository;
+import com.kopi.kopi.entity.DiscountCode;
+import com.kopi.kopi.entity.DiscountEvent;
+import com.kopi.kopi.entity.DiscountEventProduct;
+import com.kopi.kopi.entity.enums.DiscountType;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -42,7 +48,7 @@ import java.util.stream.Collectors;
 @Configuration
 public class DataInit {
 	@Bean
-    CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository, DiningTableRepository diningTableRepository, PositionRepository positionRepository, SizeRepository sizeRepository, AddOnRepository addOnRepository, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository) {
+    CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository, DiningTableRepository diningTableRepository, PositionRepository positionRepository, SizeRepository sizeRepository, AddOnRepository addOnRepository, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountEventRepository discountEventRepository) {
 		return args -> {
 			// Seed roles
 			if (roleRepository.count() == 0) {
@@ -77,7 +83,7 @@ public class DataInit {
                 ));
             }
 
-// --- Seed Products ---
+            // --- Seed Products ---
             if (productRepository.count() == 0) {
                 LocalDateTime now = LocalDateTime.now();
 
@@ -522,8 +528,112 @@ public class DataInit {
                         order.getPayments().add(payment);
 						orderRepository.save(order);
 					}
+
+            // --- Seed Discounts (Codes and Events) ---
+            try {
+                LocalDateTime nowDsc = LocalDateTime.now();
+                // Seed Discount Codes (3 variants: expired, current, upcoming)
+                if (discountCodeRepository.count() < 3) {
+                    DiscountCode codeExpired = DiscountCode.builder()
+                            .code("EXPIRED10")
+                            .description("Expired 10% off")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("10"))
+                            .minOrderAmount(new BigDecimal("100000"))
+                            .startsAt(nowDsc.minusDays(10))
+                            .endsAt(nowDsc.minusDays(3))
+                            .totalUsageLimit(100)
+                            .perUserLimit(2)
+                            .active(true)
+                            .usageCount(0)
+                            .createdAt(nowDsc)
+                            .build();
+                    DiscountCode codeCurrent = DiscountCode.builder()
+                            .code("ACTIVE15K")
+                            .description("Active 15,000 VND off")
+                            .discountType(DiscountType.AMOUNT)
+                            .discountValue(new BigDecimal("15000"))
+                            //.minOrderAmount(new BigDecimal("50000"))
+                            .startsAt(nowDsc.minusDays(2))
+                            .endsAt(nowDsc.minusDays(2).plusDays(7))
+                            .totalUsageLimit(500)
+                            .perUserLimit(3)
+                            .active(true)
+                            .usageCount(0)
+                            .createdAt(nowDsc)
+                            .build();
+                    DiscountCode codeUpcoming = DiscountCode.builder()
+                            .code("UPCOMING20")
+                            .description("Upcoming 20% off")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("20"))
+                            .minOrderAmount(new BigDecimal("50000"))
+                            .startsAt(nowDsc.plusDays(7))
+                            .endsAt(nowDsc.plusDays(14))
+                            .totalUsageLimit(200)
+                            .perUserLimit(1)
+                            .active(true)
+                            .usageCount(0)
+                            .createdAt(nowDsc)
+                            .build();
+                    discountCodeRepository.saveAll(Arrays.asList(codeExpired, codeCurrent, codeUpcoming));
+                }
+
+                // Seed Discount Events (3 variants), each mapping to products 1,2,3
+                if (discountEventRepository.count() < 3) {
+                    List<Product> firstThree = productRepository.findAll().stream()
+                            .filter(p -> p.getProductId() != null && p.getProductId() <= 3)
+                            .sorted(Comparator.comparing(Product::getProductId))
+                            .limit(3)
+                            .toList();
+
+                    DiscountEvent evExpired = DiscountEvent.builder()
+                            .name("Expired Event 10%")
+                            .description("Expired event discount for first 3 products")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("10"))
+                            .startsAt(nowDsc.minusDays(10))
+                            .endsAt(nowDsc.minusDays(3))
+                            .active(true)
+                            .createdAt(nowDsc)
+                            .build();
+                    for (Product p : firstThree) {
+                        evExpired.getProducts().add(DiscountEventProduct.builder().discountEvent(evExpired).product(p).build());
+                    }
+
+                    DiscountEvent evCurrent = DiscountEvent.builder()
+                            .name("Active Event 12%")
+                            .description("Active event discount for first 3 products")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("12"))
+                            .startsAt(nowDsc.minusDays(2))
+                            .endsAt(nowDsc.minusDays(2).plusDays(7))
+                            .active(true)
+                            .createdAt(nowDsc)
+                            .build();
+                    for (Product p : firstThree) {
+                        evCurrent.getProducts().add(DiscountEventProduct.builder().discountEvent(evCurrent).product(p).build());
+                    }
+
+                    DiscountEvent evUpcoming = DiscountEvent.builder()
+                            .name("Upcoming Event 15%")
+                            .description("Upcoming event discount for first 3 products")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("15"))
+                            .startsAt(nowDsc.plusDays(7))
+                            .endsAt(nowDsc.plusDays(14))
+                            .active(true)
+                            .createdAt(nowDsc)
+                            .build();
+                    for (Product p : firstThree) {
+                        evUpcoming.getProducts().add(DiscountEventProduct.builder().discountEvent(evUpcoming).product(p).build());
+                    }
+
+                    discountEventRepository.saveAll(Arrays.asList(evExpired, evCurrent, evUpcoming));
+                }
+            } catch (Exception ignored) {}
 				}
 			}
 		};
 	}
-} 
+}

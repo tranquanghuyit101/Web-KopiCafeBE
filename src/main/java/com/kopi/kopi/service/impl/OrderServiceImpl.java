@@ -120,7 +120,11 @@ public class OrderServiceImpl implements OrderService {
         OrderEntity o = orderRepository.findById(id).orElseThrow();
         boolean isOwner = (o.getCustomer() != null && current != null && Objects.equals(o.getCustomer().getUserId(), current.getUserId()));
         String roleName = current != null && current.getRole() != null ? current.getRole().getName() : null;
-        boolean isStaff = roleName != null && (roleName.equalsIgnoreCase("ADMIN") || roleName.equalsIgnoreCase("EMPLOYEE"));
+        boolean isStaff = roleName != null && (
+                roleName.equalsIgnoreCase("ADMIN") ||
+                roleName.equalsIgnoreCase("STAFF") ||
+                roleName.equalsIgnoreCase("EMPLOYEE")
+        );
         if (!isOwner && !isStaff) {
             return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
         }
