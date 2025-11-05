@@ -5,6 +5,7 @@ import com.kopi.kopi.entity.*;
 import com.kopi.kopi.entity.enums.PaymentMethod;
 import com.kopi.kopi.entity.enums.PaymentStatus;
 import com.kopi.kopi.repository.*;
+import com.kopi.kopi.service.NotificationService;
 import com.kopi.kopi.service.OrderService;
 import com.kopi.kopi.service.TableService;
 import org.springframework.data.domain.Page;
@@ -37,10 +38,11 @@ public class OrderServiceImpl implements OrderService {
     private final DiscountCodeRedemptionRepository discountCodeRedemptionRepository;
     @PersistenceContext
     private EntityManager entityManager;
-
     private final MapboxService mapboxService;
+    private final NotificationService notificationService;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountCodeRedemptionRepository discountCodeRedemptionRepository) {
+
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, NotificationService notificationService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountCodeRedemptionRepository discountCodeRedemptionRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -55,6 +57,7 @@ public class OrderServiceImpl implements OrderService {
         this.orderDetailAddOnRepository = orderDetailAddOnRepository;
         this.discountCodeRepository = discountCodeRepository;
         this.discountCodeRedemptionRepository = discountCodeRedemptionRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -307,6 +310,22 @@ public class OrderServiceImpl implements OrderService {
         if (order.getTable() != null) {
             tableService.setAvailableIfNoPendingOrders(order.getTable().getTableId());
         }
+        
+        // Gửi thông báo khi status thay đổi (chỉ khi status thực sự thay đổi)
+        if (!Objects.equals(previousStatus, status)) {
+            try {
+                // Gửi thông báo cho customer
+                notificationService.notifyOrderStatusChangeToCustomer(order, previousStatus, status);
+                // Gửi thông báo cho staff
+                notificationService.notifyOrderStatusChangeToStaff(order, previousStatus, status);
+            } catch (Exception ex) {
+                // Không để lỗi thông báo làm vỡ flow thay đổi status
+                org.slf4j.LoggerFactory.getLogger(getClass())
+                    .warn("Failed to send notifications for order {} status change: {}", 
+                        order.getOrderId(), ex.getMessage());
+            }
+        }
+        
         return ResponseEntity.ok(Map.of("message", "OK"));
     }
 
