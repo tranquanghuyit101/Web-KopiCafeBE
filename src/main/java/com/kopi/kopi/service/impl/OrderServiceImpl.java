@@ -33,12 +33,14 @@ public class OrderServiceImpl implements OrderService {
     private final ProductAddOnRepository productAddOnRepository;
     private final SizeRepository sizeRepository;
     private final OrderDetailAddOnRepository orderDetailAddOnRepository;
+    private final DiscountCodeRepository discountCodeRepository;
+    private final DiscountCodeRedemptionRepository discountCodeRedemptionRepository;
     @PersistenceContext
     private EntityManager entityManager;
 
     private final MapboxService mapboxService;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository) {
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountCodeRedemptionRepository discountCodeRedemptionRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -51,6 +53,8 @@ public class OrderServiceImpl implements OrderService {
         this.productAddOnRepository = productAddOnRepository;
         this.sizeRepository = sizeRepository;
         this.orderDetailAddOnRepository = orderDetailAddOnRepository;
+        this.discountCodeRepository = discountCodeRepository;
+        this.discountCodeRedemptionRepository = discountCodeRedemptionRepository;
     }
 
     @Override
@@ -460,13 +464,34 @@ public class OrderServiceImpl implements OrderService {
             else shippingFee = new BigDecimal("50000");
         }
 
-        // Discount: accept optional discount_amount from body (fallback to 0)
+        // Discount: prefer validating discount_code; fallback to provided discount_amount (validated)
         BigDecimal discount = BigDecimal.ZERO;
-        if (body.containsKey("discount_amount") && body.get("discount_amount") != null) {
-            try { discount = new BigDecimal(String.valueOf(body.get("discount_amount"))); } catch (Exception ignored) {}
+        String discountCodeStr = null;
+        if (body.containsKey("discount_code") && body.get("discount_code") != null) {
+            discountCodeStr = String.valueOf(body.get("discount_code")).trim();
         }
-        if (discount.compareTo(BigDecimal.ZERO) < 0) discount = BigDecimal.ZERO;
-        if (discount.compareTo(subtotal) > 0) discount = subtotal;
+        DiscountCode appliedCode = null;
+        if (discountCodeStr != null && !discountCodeStr.isBlank()) {
+            var dcOpt = discountCodeRepository.findByCodeIgnoreCase(discountCodeStr);
+            if (dcOpt.isPresent()) {
+                DiscountCode dc = dcOpt.get();
+                String validationError = validateDiscountCodeForUser(dc, subtotal, current);
+                if (validationError == null) {
+                    discount = computeDiscountAmount(dc, subtotal);
+                    appliedCode = dc;
+                } else {
+                    return ResponseEntity.badRequest().body(Map.of("message", validationError));
+                }
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("message", "Mã giảm giá không tồn tại"));
+            }
+        } else {
+            if (body.containsKey("discount_amount") && body.get("discount_amount") != null) {
+                try { discount = new BigDecimal(String.valueOf(body.get("discount_amount"))); } catch (Exception ignored) {}
+            }
+            if (discount.compareTo(BigDecimal.ZERO) < 0) discount = BigDecimal.ZERO;
+            if (discount.compareTo(subtotal) > 0) discount = subtotal;
+        }
 
         OrderEntity order = OrderEntity.builder()
                 .orderCode("ORD-" + System.currentTimeMillis())
@@ -505,7 +530,84 @@ public class OrderServiceImpl implements OrderService {
         try { entityManager.flush(); } catch (Exception ignored) {}
         // New: persist add-ons by matching request products to saved details
         persistAddOnsForOrder(saved, products);
+        // Record discount redemption if applied
+        if (appliedCode != null) {
+            DiscountCodeRedemption redemption = DiscountCodeRedemption.builder()
+                    .discountCode(appliedCode)
+                    .order(saved)
+                    .user(current)
+                    .redeemedAt(LocalDateTime.now())
+                    .build();
+            discountCodeRedemptionRepository.save(redemption);
+            // increment usage count safely
+            Integer usage = appliedCode.getUsageCount() == null ? 0 : appliedCode.getUsageCount();
+            appliedCode.setUsageCount(usage + 1);
+            discountCodeRepository.save(appliedCode);
+        }
         return ResponseEntity.ok(Map.of("message", "OK", "data", Map.of("id", saved.getOrderId())));
+    }
+
+    private BigDecimal computeDiscountAmount(DiscountCode dc, BigDecimal subtotal) {
+        if (dc == null || subtotal == null) return BigDecimal.ZERO;
+        if (dc.getDiscountType() == com.kopi.kopi.entity.enums.DiscountType.PERCENT) {
+            BigDecimal percent = dc.getDiscountValue() == null ? BigDecimal.ZERO : dc.getDiscountValue();
+            BigDecimal amt = subtotal.multiply(percent).divide(new BigDecimal("100"));
+            if (amt.compareTo(subtotal) > 0) amt = subtotal;
+            if (amt.compareTo(BigDecimal.ZERO) < 0) amt = BigDecimal.ZERO;
+            return amt;
+        }
+        BigDecimal val = dc.getDiscountValue() == null ? BigDecimal.ZERO : dc.getDiscountValue();
+        if (val.compareTo(subtotal) > 0) val = subtotal;
+        if (val.compareTo(BigDecimal.ZERO) < 0) val = BigDecimal.ZERO;
+        return val;
+    }
+
+    private String validateDiscountCodeForUser(DiscountCode dc, BigDecimal subtotal, User user) {
+        if (dc == null) return "Mã giảm giá không hợp lệ";
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        if (!Boolean.TRUE.equals(dc.getActive())) return "Mã giảm giá đã bị vô hiệu hoá";
+        if (dc.getStartsAt() != null && now.isBefore(dc.getStartsAt())) return "Mã giảm giá chưa bắt đầu";
+        if (dc.getEndsAt() != null && now.isAfter(dc.getEndsAt())) return "Mã giảm giá đã hết hạn";
+        if (dc.getMinOrderAmount() != null && subtotal != null && subtotal.compareTo(dc.getMinOrderAmount()) < 0) return "Chưa đạt giá trị đơn tối thiểu";
+        if (dc.getTotalUsageLimit() != null) {
+            int totalUsed = discountCodeRedemptionRepository.countByDiscountCode_DiscountCodeId(dc.getDiscountCodeId());
+            if (totalUsed >= dc.getTotalUsageLimit()) return "Mã giảm giá đã đạt giới hạn sử dụng";
+        }
+        if (dc.getPerUserLimit() != null && user != null) {
+            int perUser = discountCodeRedemptionRepository.countByDiscountCode_DiscountCodeIdAndUser_UserId(dc.getDiscountCodeId(), user.getUserId());
+            if (perUser >= dc.getPerUserLimit()) return "Bạn đã dùng hết số lần cho mã này";
+        }
+        return null;
+    }
+
+    @Override
+    public ResponseEntity<?> validateDiscount(Map<String, Object> body, User current) {
+        String code = body == null ? null : String.valueOf(body.getOrDefault("code", "")).trim();
+        BigDecimal subtotal = BigDecimal.ZERO;
+        if (body != null && body.get("subtotal") != null) {
+            try { subtotal = new BigDecimal(String.valueOf(body.get("subtotal"))); } catch (Exception ignored) {}
+        }
+        if (code == null || code.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng nhập mã giảm giá"));
+        }
+        var dcOpt = discountCodeRepository.findByCodeIgnoreCase(code);
+        if (dcOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Mã giảm giá không tồn tại"));
+        }
+        DiscountCode dc = dcOpt.get();
+        String error = validateDiscountCodeForUser(dc, subtotal, current);
+        if (error != null) {
+            return ResponseEntity.badRequest().body(Map.of("message", error));
+        }
+        BigDecimal amount = computeDiscountAmount(dc, subtotal);
+        return ResponseEntity.ok(Map.of(
+                "valid", true,
+                "discount_amount", amount,
+                "coupon_code", dc.getCode(),
+                "discount_type", dc.getDiscountType() != null ? dc.getDiscountType().name() : null,
+                "discount_value", dc.getDiscountValue(),
+                "message", "Áp dụng mã giảm giá thành công"
+        ));
     }
 
     private List<Integer> parseAddOnIds(Object primary, Object fallback) {
