@@ -14,6 +14,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Sort;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -27,10 +29,16 @@ public class OrderServiceImpl implements OrderService {
     private final UserRepository userRepository;
     private final TableService tableService;
     private final DiningTableRepository diningTableRepository;
+    private final ProductSizeRepository productSizeRepository;
+    private final ProductAddOnRepository productAddOnRepository;
+    private final SizeRepository sizeRepository;
+    private final OrderDetailAddOnRepository orderDetailAddOnRepository;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private final MapboxService mapboxService;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService) {
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -39,6 +47,10 @@ public class OrderServiceImpl implements OrderService {
         this.diningTableRepository = diningTableRepository;
         this.userAddressRepository = userAddressRepository;
         this.mapboxService = mapboxService;
+        this.productSizeRepository = productSizeRepository;
+        this.productAddOnRepository = productAddOnRepository;
+        this.sizeRepository = sizeRepository;
+        this.orderDetailAddOnRepository = orderDetailAddOnRepository;
     }
 
     @Override
@@ -51,8 +63,22 @@ public class OrderServiceImpl implements OrderService {
             Map<String, Object> m = new HashMap<>();
             m.put("id", o.getOrderId());
             m.put("grand_total", defaultBigDecimal(o.getTotalAmount()));
+            m.put("subtotal", defaultBigDecimal(o.getSubtotalAmount()));
+            m.put("shipping_fee", defaultBigDecimal(o.getShippingAmount()));
+            m.put("discount", defaultBigDecimal(o.getDiscountAmount()));
             m.put("status_name", o.getStatus());
             m.put("created_at", o.getCreatedAt());
+            // Payment
+            String paymentName = null;
+            if (o.getPayments() != null && !o.getPayments().isEmpty()) {
+                Payment p = o.getPayments().get(0);
+                paymentName = p.getMethod() != null ? p.getMethod().name() : null;
+            }
+            m.put("payment_name", paymentName);
+            // Delivery
+            String deliveryName = o.getAddress() != null ? "Shipping" : (o.getTable() != null ? ("Table " + o.getTable().getNumber()) : "");
+            m.put("delivery_name", deliveryName);
+            m.put("delivery_address", o.getAddress() != null ? o.getAddress().getAddressLine() : null);
 
             List<Map<String, Object>> products = new ArrayList<>();
             if (o.getOrderDetails() != null && !o.getOrderDetails().isEmpty()) {
@@ -63,7 +89,16 @@ public class OrderServiceImpl implements OrderService {
                     pd.put("product_img", p != null ? p.getImgUrl() : null);
                     pd.put("qty", d.getQuantity());
                     pd.put("subtotal", defaultBigDecimal(d.getLineTotal()));
-                    pd.put("size", "Regular");
+                    pd.put("size", d.getSize() != null ? d.getSize().getName() : null);
+                    // add-ons
+                    List<Map<String, Object>> addOns = new ArrayList<>();
+                    for (OrderDetailAddOn oda : orderDetailAddOnRepository.findByOrderDetail_OrderDetailId(d.getOrderDetailId())) {
+                        Map<String, Object> ao = new HashMap<>();
+                        ao.put("name", oda.getAddOn() != null ? oda.getAddOn().getName() : null);
+                        ao.put("price", defaultBigDecimal(oda.getUnitPriceSnapshot()));
+                        addOns.add(ao);
+                    }
+                    pd.put("add_ons", addOns);
                     products.add(pd);
                 }
             }
@@ -114,6 +149,8 @@ public class OrderServiceImpl implements OrderService {
         detail.put("delivery_name", deliveryName);
         detail.put("delivery_fee", defaultBigDecimal(o.getShippingAmount()));
         detail.put("grand_total", defaultBigDecimal(o.getTotalAmount()));
+        detail.put("subtotal", defaultBigDecimal(o.getSubtotalAmount()));
+        detail.put("discount", defaultBigDecimal(o.getDiscountAmount()));
 
         List<Map<String, Object>> products = new ArrayList<>();
         if (o.getOrderDetails() != null) {
@@ -124,8 +161,16 @@ public class OrderServiceImpl implements OrderService {
                 pd.put("product_name", d.getProductNameSnapshot() != null ? d.getProductNameSnapshot() : (p != null ? p.getName() : null));
                 pd.put("product_img", p != null ? p.getImgUrl() : null);
                 pd.put("qty", d.getQuantity());
-                pd.put("size", "Regular");
+                pd.put("size", d.getSize() != null ? d.getSize().getName() : null);
                 pd.put("subtotal", defaultBigDecimal(d.getLineTotal()));
+                List<Map<String, Object>> addOns = new ArrayList<>();
+                for (OrderDetailAddOn oda : orderDetailAddOnRepository.findByOrderDetail_OrderDetailId(d.getOrderDetailId())) {
+                    Map<String, Object> ao = new HashMap<>();
+                    ao.put("name", oda.getAddOn() != null ? oda.getAddOn().getName() : null);
+                    ao.put("price", defaultBigDecimal(oda.getUnitPriceSnapshot()));
+                    addOns.add(ao);
+                }
+                pd.put("add_ons", addOns);
                 products.add(pd);
             }
         }
@@ -157,6 +202,9 @@ public class OrderServiceImpl implements OrderService {
             m.put("created_at", o.getCreatedAt());
             m.put("table_number", o.getTable() != null ? o.getTable().getNumber() : null);
             m.put("total", defaultBigDecimal(o.getTotalAmount()));
+            m.put("subtotal", defaultBigDecimal(o.getSubtotalAmount()));
+            m.put("shipping_fee", defaultBigDecimal(o.getShippingAmount()));
+            m.put("discount", defaultBigDecimal(o.getDiscountAmount()));
             m.put("shipper_id", o.getShipper() != null ? o.getShipper().getUserId() : null);
 
             List<Map<String, Object>> products = new ArrayList<>();
@@ -166,6 +214,15 @@ public class OrderServiceImpl implements OrderService {
                     pd.put("product_name", d.getProductNameSnapshot());
                     pd.put("qty", d.getQuantity());
                     pd.put("subtotal", defaultBigDecimal(d.getLineTotal()));
+                    pd.put("size", d.getSize() != null ? d.getSize().getName() : null);
+                    List<Map<String, Object>> addOns = new ArrayList<>();
+                    for (OrderDetailAddOn oda : orderDetailAddOnRepository.findByOrderDetail_OrderDetailId(d.getOrderDetailId())) {
+                        Map<String, Object> ao = new HashMap<>();
+                        ao.put("name", oda.getAddOn() != null ? oda.getAddOn().getName() : null);
+                        ao.put("price", defaultBigDecimal(oda.getUnitPriceSnapshot()));
+                        addOns.add(ao);
+                    }
+                    pd.put("add_ons", addOns);
                     products.add(pd);
                 }
             }
@@ -284,13 +341,37 @@ public class OrderServiceImpl implements OrderService {
             Integer productId = Integer.valueOf(String.valueOf(p.get("product_id")));
             Integer qty = Integer.valueOf(String.valueOf(p.getOrDefault("qty", 1)));
             Product prod = productRepository.findById(productId).orElseThrow();
-            BigDecimal unit = prod.getPrice();
+
+            // Parse size_id (optional)
+            Integer sizeId = null;
+            if (p.containsKey("size_id") && p.get("size_id") != null) {
+                try { sizeId = Integer.valueOf(String.valueOf(p.get("size_id"))); } catch (Exception ignored) {}
+            }
+            // Parse add_on_ids (array) or add_ons (array of ids or objects)
+            List<Integer> addOnIds = parseAddOnIds(p.get("add_on_ids"), p.get("add_ons"));
+
+            BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+            BigDecimal sizeDelta = BigDecimal.ZERO;
+            Size sizeEntity = null;
+            if (sizeId != null) {
+                sizeEntity = sizeRepository.findById(sizeId).orElse(null);
+                var psOpt = productSizeRepository.findByProduct_ProductIdAndSize_SizeId(productId, sizeId);
+                if (psOpt.isPresent() && psOpt.get().getPrice() != null) sizeDelta = psOpt.get().getPrice();
+            }
+            BigDecimal addOnSum = BigDecimal.ZERO;
+            for (Integer aId : addOnIds) {
+                var paOpt = productAddOnRepository.findByProduct_ProductIdAndAddOn_AddOnId(productId, aId);
+                if (paOpt.isPresent() && paOpt.get().getPrice() != null) addOnSum = addOnSum.add(paOpt.get().getPrice());
+            }
+            BigDecimal unit = base.add(sizeDelta).add(addOnSum);
+
             subtotal = subtotal.add(unit.multiply(BigDecimal.valueOf(qty)));
             OrderDetail d = OrderDetail.builder()
                 .product(prod)
                 .productNameSnapshot(prod.getName())
                 .unitPrice(unit)
                 .quantity(qty)
+                .size(sizeEntity)
                 .build();
             details.add(d);
         }
@@ -416,7 +497,99 @@ public class OrderServiceImpl implements OrderService {
         }
 
         OrderEntity saved = orderRepository.save(order);
+        // Ensure detail IDs are generated before inserting add-ons
+        try { entityManager.flush(); } catch (Exception ignored) {}
+        // New: persist add-ons by matching request products to saved details
+        persistAddOnsForOrder(saved, products);
         return ResponseEntity.ok(Map.of("message", "OK", "data", Map.of("id", saved.getOrderId())));
+    }
+
+    private List<Integer> parseAddOnIds(Object primary, Object fallback) {
+        List<Integer> ids = new ArrayList<>();
+        Object raw = primary != null ? primary : fallback;
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o == null) continue;
+                if (o instanceof Number n) ids.add(n.intValue());
+                else if (o instanceof Map<?, ?> om) {
+                    Object idVal = om.get("id");
+                    if (idVal == null) idVal = om.get("add_on_id");
+                    if (idVal instanceof Number n2) ids.add(n2.intValue());
+                    else if (idVal != null) {
+                        try { ids.add(Integer.valueOf(String.valueOf(idVal))); } catch (Exception ignored) {}
+                    }
+                } else {
+                    try { ids.add(Integer.valueOf(String.valueOf(o))); } catch (Exception ignored) {}
+                }
+            }
+        }
+        return ids;
+    }
+
+    // Persist order_detail_add_ons by matching each request product to a saved detail
+    private void persistAddOnsForOrder(OrderEntity order, List<Map<String, Object>> requestProducts) {
+        if (order == null || requestProducts == null || requestProducts.isEmpty()) return;
+        List<OrderDetail> details = order.getOrderDetails() == null ? List.of() : new ArrayList<>(order.getOrderDetails());
+        boolean[] used = new boolean[details.size()];
+        List<OrderDetailAddOn> toSave = new ArrayList<>();
+        for (Map<String, Object> p : requestProducts) {
+            Integer productId;
+            Integer qty;
+            try { productId = Integer.valueOf(String.valueOf(p.get("product_id"))); } catch (Exception e) { continue; }
+            try { qty = Integer.valueOf(String.valueOf(p.getOrDefault("qty", 1))); } catch (Exception e) { qty = 1; }
+            Integer sizeId = null;
+            if (p.containsKey("size_id") && p.get("size_id") != null) {
+                try { sizeId = Integer.valueOf(String.valueOf(p.get("size_id"))); } catch (Exception ignored) {}
+            }
+            List<Integer> addOnIds = parseAddOnIds(p.get("add_on_ids"), p.get("add_ons"));
+            if (addOnIds.isEmpty()) continue;
+
+            // Compute expected unit price again to match detail when duplicates exist
+            Product prod = productRepository.findById(productId).orElse(null);
+            if (prod == null) continue;
+            BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+            BigDecimal sizeDelta = BigDecimal.ZERO;
+            if (sizeId != null) {
+                var ps = productSizeRepository.findByProduct_ProductIdAndSize_SizeId(productId, sizeId).orElse(null);
+                if (ps != null && ps.getPrice() != null) sizeDelta = ps.getPrice();
+            }
+            BigDecimal addOnSum = BigDecimal.ZERO;
+            for (Integer aId : addOnIds) {
+                var pa = productAddOnRepository.findByProduct_ProductIdAndAddOn_AddOnId(productId, aId).orElse(null);
+                if (pa != null && pa.getPrice() != null) addOnSum = addOnSum.add(pa.getPrice());
+            }
+            BigDecimal expectedUnit = base.add(sizeDelta).add(addOnSum);
+
+            // Find first unmatched detail that matches all fields
+            int matchIdx = -1;
+            for (int i = 0; i < details.size(); i++) {
+                if (used[i]) continue;
+                OrderDetail d = details.get(i);
+                if (d.getProduct() == null || d.getProduct().getProductId() == null) continue;
+                if (!Objects.equals(d.getProduct().getProductId(), productId)) continue;
+                if (!Objects.equals(d.getQuantity(), qty)) continue;
+                Integer dSizeId = d.getSize() != null ? d.getSize().getSizeId() : null;
+                if (!Objects.equals(dSizeId, sizeId)) continue;
+                BigDecimal dUnit = d.getUnitPrice() != null ? d.getUnitPrice() : BigDecimal.ZERO;
+                if (dUnit.compareTo(expectedUnit) != 0) continue;
+                matchIdx = i;
+                break;
+            }
+            if (matchIdx == -1) continue;
+            used[matchIdx] = true;
+            OrderDetail matched = details.get(matchIdx);
+            for (Integer aId : addOnIds) {
+                var paOpt = productAddOnRepository.findByProduct_ProductIdAndAddOn_AddOnId(productId, aId);
+                if (paOpt.isEmpty()) continue;
+                ProductAddOn pa = paOpt.get();
+                toSave.add(OrderDetailAddOn.builder()
+                        .orderDetail(matched)
+                        .addOn(pa.getAddOn())
+                        .unitPriceSnapshot(pa.getPrice() != null ? pa.getPrice() : BigDecimal.ZERO)
+                        .build());
+            }
+        }
+        if (!toSave.isEmpty()) orderDetailAddOnRepository.saveAll(toSave);
     }
 
     private String normalizeCity(String s) {
