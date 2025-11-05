@@ -27,6 +27,11 @@ public class OrderDetail {
 	@ToString.Exclude
 	private Product product;
 
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "size_id")
+	@ToString.Exclude
+	private Size size;
+
 	@Column(name = "product_name_snapshot", nullable = false, length = 150)
 	private String productNameSnapshot;
 
