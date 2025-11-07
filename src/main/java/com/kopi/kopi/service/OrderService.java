@@ -14,4 +14,5 @@ public interface OrderService {
     ResponseEntity<?> createTransaction(Map<String, Object> body, User current);
     ResponseEntity<?> createGuestTableOrder(GuestOrderController.GuestOrderRequest req);
     ResponseEntity<?> validateProducts(Map<String, Object> body);
+    ResponseEntity<?> validateDiscount(Map<String, Object> body, User current);
 }

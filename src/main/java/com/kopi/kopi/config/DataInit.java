@@ -21,6 +21,23 @@ import com.kopi.kopi.entity.DiningTable;
 import com.kopi.kopi.repository.DiningTableRepository;
 import com.kopi.kopi.entity.Position;
 import com.kopi.kopi.repository.PositionRepository;
+import com.kopi.kopi.entity.Size;
+import com.kopi.kopi.entity.AddOn;
+import com.kopi.kopi.entity.Payment;
+import com.kopi.kopi.entity.enums.PaymentMethod;
+import com.kopi.kopi.entity.enums.PaymentStatus;
+import com.kopi.kopi.entity.ProductSize;
+import com.kopi.kopi.entity.ProductAddOn;
+import com.kopi.kopi.repository.ProductSizeRepository;
+import com.kopi.kopi.repository.ProductAddOnRepository;
+import com.kopi.kopi.repository.SizeRepository;
+import com.kopi.kopi.repository.AddOnRepository;
+import com.kopi.kopi.repository.DiscountCodeRepository;
+import com.kopi.kopi.repository.DiscountEventRepository;
+import com.kopi.kopi.entity.DiscountCode;
+import com.kopi.kopi.entity.DiscountEvent;
+import com.kopi.kopi.entity.DiscountEventProduct;
+import com.kopi.kopi.entity.enums.DiscountType;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -31,7 +48,7 @@ import java.util.stream.Collectors;
 @Configuration
 public class DataInit {
 	@Bean
-    CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository, DiningTableRepository diningTableRepository, PositionRepository positionRepository) {
+    CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository, DiningTableRepository diningTableRepository, PositionRepository positionRepository, SizeRepository sizeRepository, AddOnRepository addOnRepository, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountEventRepository discountEventRepository) {
 		return args -> {
 			// Seed roles
 			if (roleRepository.count() == 0) {
@@ -66,7 +83,7 @@ public class DataInit {
                 ));
             }
 
-// --- Seed Products ---
+            // --- Seed Products ---
             if (productRepository.count() == 0) {
                 LocalDateTime now = LocalDateTime.now();
 
@@ -207,6 +224,138 @@ public class DataInit {
             }
 
 
+            // --- Seed Sizes --- (moved above order seeding)
+            if (sizeRepository.count() == 0) {
+                LocalDateTime now = LocalDateTime.now();
+                Size s1 = Size.builder().name("Regular").code("R").displayOrder(1).createdAt(now).updatedAt(now).build();
+                Size s2 = Size.builder().name("Large").code("L").displayOrder(2).createdAt(now).updatedAt(now).build();
+                Size s3 = Size.builder().name("Xtra Large").code("XL").displayOrder(3).createdAt(now).updatedAt(now).build();
+                sizeRepository.saveAll(Arrays.asList(s1, s2, s3));
+            }
+
+            // --- Seed Add-ons --- (moved above order seeding)
+            if (addOnRepository.count() == 0) {
+                LocalDateTime now = LocalDateTime.now();
+                List<AddOn> addOns = new ArrayList<>();
+                addOns.add(AddOn.builder().name("Extra sugar").displayOrder(1).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("Extra milk").displayOrder(2).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("Black boba").displayOrder(3).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("White boba").displayOrder(4).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("Golden boba").displayOrder(5).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("Cheese boba").displayOrder(6).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("Nata de coco").displayOrder(7).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("Taro jelly").displayOrder(8).createdAt(now).updatedAt(now).build());
+                addOns.add(AddOn.builder().name("Flan").displayOrder(9).createdAt(now).updatedAt(now).build());
+                addOnRepository.saveAll(addOns);
+            }
+
+            // --- Seed Product Sizes (each product has all 3 sizes) ---
+            if (productSizeRepository.count() == 0) {
+                List<Product> allProducts = productRepository.findAll();
+                Map<String, Size> codeToSize = sizeRepository.findAll().stream()
+                        .collect(Collectors.toMap(s -> s.getCode().toUpperCase(Locale.ROOT), s -> s));
+                Size sizeR = codeToSize.get("R");
+                Size sizeL = codeToSize.get("L");
+                Size sizeXL = codeToSize.get("XL");
+                List<ProductSize> psList = new ArrayList<>();
+                for (Product p : allProducts) {
+					// Price stored here is the incremental delta
+					if (sizeR != null) psList.add(ProductSize.builder().product(p).size(sizeR).price(new BigDecimal("0")).available(true).build());
+					if (sizeL != null) psList.add(ProductSize.builder().product(p).size(sizeL).price(new BigDecimal("5000")).available(true).build());
+					if (sizeXL != null) psList.add(ProductSize.builder().product(p).size(sizeXL).price(new BigDecimal("10000")).available(true).build());
+                }
+                if (!psList.isEmpty()) productSizeRepository.saveAll(psList);
+            }
+
+			// --- Seed Product Add-ons ---
+			// Coffee: Extra sugar + Extra milk (0)
+			// Milk Tea: boba (black/white/golden/cheese) 7000; nata de coco 5000; taro jelly 5000; flan 10000
+			// Juice: nata de coco 5000; taro jelly 5000
+			// Ice Blended: boba 7000; taro jelly 5000; flan 10000
+			// Yogurt: boba 7000; nata de coco 5000; taro jelly 5000
+			// Soft Drink: no add-ons
+			if (productAddOnRepository.count() == 0) {
+				List<Category> categories = categoryRepository.findAll();
+				Category coffee = categories.stream().filter(c -> Objects.equals(c.getName(), "Coffee")).findFirst().orElse(null);
+				Category milkTea = categories.stream().filter(c -> Objects.equals(c.getName(), "Milk Tea")).findFirst().orElse(null);
+				Category juice = categories.stream().filter(c -> Objects.equals(c.getName(), "Juice")).findFirst().orElse(null);
+				Category iceBlended = categories.stream().filter(c -> Objects.equals(c.getName(), "Ice Blended")).findFirst().orElse(null);
+				Category yogurt = categories.stream().filter(c -> Objects.equals(c.getName(), "Yogurt")).findFirst().orElse(null);
+				Category others = categories.stream().filter(c -> Objects.equals(c.getName(), "Others")).findFirst().orElse(null);
+
+				AddOn sugar = addOnRepository.findByName("Extra sugar").orElse(null);
+				AddOn milk = addOnRepository.findByName("Extra milk").orElse(null);
+				AddOn blackBoba = addOnRepository.findByName("Black boba").orElse(null);
+				AddOn whiteBoba = addOnRepository.findByName("White boba").orElse(null);
+				AddOn goldenBoba = addOnRepository.findByName("Golden boba").orElse(null);
+				AddOn cheeseBoba = addOnRepository.findByName("Cheese boba").orElse(null);
+				AddOn nata = addOnRepository.findByName("Nata de coco").orElse(null);
+				AddOn taro = addOnRepository.findByName("Taro jelly").orElse(null);
+				AddOn flan = addOnRepository.findByName("Flan").orElse(null);
+
+				List<ProductAddOn> mappings = new ArrayList<>();
+				List<Product> all = productRepository.findAll();
+
+				if (coffee != null) {
+					List<Product> coffees = all.stream().filter(p -> p.getCategory() != null && Objects.equals(p.getCategory().getCategoryId(), coffee.getCategoryId())).toList();
+					for (Product p : coffees) {
+						if (sugar != null) mappings.add(ProductAddOn.builder().product(p).addOn(sugar).price(BigDecimal.ZERO).available(true).build());
+						if (milk != null) mappings.add(ProductAddOn.builder().product(p).addOn(milk).price(BigDecimal.ZERO).available(true).build());
+					}
+				}
+
+				if (milkTea != null) {
+					List<Product> list = all.stream().filter(p -> p.getCategory() != null && Objects.equals(p.getCategory().getCategoryId(), milkTea.getCategoryId())).toList();
+					for (Product p : list) {
+						if (blackBoba != null) mappings.add(ProductAddOn.builder().product(p).addOn(blackBoba).price(new BigDecimal("7000")).available(true).build());
+						if (whiteBoba != null) mappings.add(ProductAddOn.builder().product(p).addOn(whiteBoba).price(new BigDecimal("7000")).available(true).build());
+						if (goldenBoba != null) mappings.add(ProductAddOn.builder().product(p).addOn(goldenBoba).price(new BigDecimal("7000")).available(true).build());
+						if (cheeseBoba != null) mappings.add(ProductAddOn.builder().product(p).addOn(cheeseBoba).price(new BigDecimal("7000")).available(true).build());
+						if (nata != null) mappings.add(ProductAddOn.builder().product(p).addOn(nata).price(new BigDecimal("5000")).available(true).build());
+						if (taro != null) mappings.add(ProductAddOn.builder().product(p).addOn(taro).price(new BigDecimal("5000")).available(true).build());
+						if (flan != null) mappings.add(ProductAddOn.builder().product(p).addOn(flan).price(new BigDecimal("10000")).available(true).build());
+					}
+				}
+
+				if (juice != null) {
+					List<Product> list = all.stream().filter(p -> p.getCategory() != null && Objects.equals(p.getCategory().getCategoryId(), juice.getCategoryId())).toList();
+					for (Product p : list) {
+						if (nata != null) mappings.add(ProductAddOn.builder().product(p).addOn(nata).price(new BigDecimal("5000")).available(true).build());
+						if (taro != null) mappings.add(ProductAddOn.builder().product(p).addOn(taro).price(new BigDecimal("5000")).available(true).build());
+					}
+				}
+
+				if (iceBlended != null) {
+					List<Product> list = all.stream().filter(p -> p.getCategory() != null && Objects.equals(p.getCategory().getCategoryId(), iceBlended.getCategoryId())).toList();
+					for (Product p : list) {
+						if (blackBoba != null) mappings.add(ProductAddOn.builder().product(p).addOn(blackBoba).price(new BigDecimal("7000")).available(true).build());
+						if (taro != null) mappings.add(ProductAddOn.builder().product(p).addOn(taro).price(new BigDecimal("5000")).available(true).build());
+						if (flan != null) mappings.add(ProductAddOn.builder().product(p).addOn(flan).price(new BigDecimal("10000")).available(true).build());
+					}
+				}
+
+				if (yogurt != null) {
+					List<Product> list = all.stream().filter(p -> p.getCategory() != null && Objects.equals(p.getCategory().getCategoryId(), yogurt.getCategoryId())).toList();
+					for (Product p : list) {
+						if (blackBoba != null) mappings.add(ProductAddOn.builder().product(p).addOn(blackBoba).price(new BigDecimal("7000")).available(true).build());
+						if (nata != null) mappings.add(ProductAddOn.builder().product(p).addOn(nata).price(new BigDecimal("5000")).available(true).build());
+						if (taro != null) mappings.add(ProductAddOn.builder().product(p).addOn(taro).price(new BigDecimal("5000")).available(true).build());
+					}
+				}
+
+				if (others != null) {
+					List<Product> list = all.stream().filter(p -> p.getCategory() != null && Objects.equals(p.getCategory().getCategoryId(), others.getCategoryId())).toList();
+					for (Product p : list) {
+						if (blackBoba != null) mappings.add(ProductAddOn.builder().product(p).addOn(blackBoba).price(new BigDecimal("7000")).available(true).build());
+						if (nata != null) mappings.add(ProductAddOn.builder().product(p).addOn(nata).price(new BigDecimal("5000")).available(true).build());
+					}
+				}
+
+				// Soft drink intentionally left without add-ons
+
+				if (!mappings.isEmpty()) productAddOnRepository.saveAll(mappings);
+			}
+
             // Seed dining tables (exact values, including timestamps and QR tokens)
             if (diningTableRepository.count() == 0) {
                 LocalDateTime t614 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 614_000_000);
@@ -329,10 +478,13 @@ public class DataInit {
 				userRepository.save(customer);
 			}
 
-            // Seed sample completed orders for the seeded customer
+            // Seed sample completed orders for the seeded customer (more complete per schema)
 			if (orderRepository.count() == 0) {
 				LocalDateTime now = LocalDateTime.now();
 				User customer = userRepository.findByUsername("customer").orElseGet(() -> userRepository.findById(3).orElse(null));
+                User creator = userRepository.findByUsername("staff").orElseGet(() -> userRepository.findById(2).orElse(null));
+                DiningTable table1 = diningTableRepository.findByNumber(1).orElse(null);
+                Size regular = sizeRepository.findByName("Regular").orElse(null);
 				if (customer != null) {
                     List<Product> products = productRepository.findAll();
 					int max = Math.min(3, products.size());
@@ -341,11 +493,15 @@ public class DataInit {
 						OrderEntity order = new OrderEntity();
 						order.setOrderCode("ORD-" + now.toLocalDate() + "-" + (i + 1));
 						order.setCustomer(customer);
+                        order.setCreatedBy(creator);
+                        order.setTable(table1);
 						order.setStatus("COMPLETED");
-						order.setSubtotalAmount(prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO);
-						// Ensure non-null shipping for DB constraint (nullable=false)
-						order.setShippingAmount(BigDecimal.ZERO);
-						order.setDiscountAmount(BigDecimal.ZERO);
+                        BigDecimal unit = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+                        BigDecimal shipping = BigDecimal.ZERO;
+                        BigDecimal discount = BigDecimal.ZERO;
+                        order.setSubtotalAmount(unit);
+                        order.setShippingAmount(shipping);
+                        order.setDiscountAmount(discount);
 						order.setNote("Seed order " + (i + 1));
 						order.setCreatedAt(now);
 						order.setUpdatedAt(now);
@@ -354,17 +510,130 @@ public class DataInit {
 						detail.setOrder(order);
 						detail.setProduct(prod);
 						detail.setProductNameSnapshot(prod.getName());
-						detail.setUnitPrice(prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO);
+                        detail.setUnitPrice(unit);
 						detail.setQuantity(1);
+                        if (regular != null) detail.setSize(regular);
 
                         List<OrderDetail> details = new ArrayList<>();
 						details.add(detail);
 						order.setOrderDetails(details);
-
+                        // Add payment entry
+                        Payment payment = Payment.builder()
+                                .order(order)
+                                .amount(unit.subtract(discount).add(shipping))
+                                .method(PaymentMethod.CASH)
+                                .status(PaymentStatus.PAID)
+                                .createdAt(now)
+                                .build();
+                        order.getPayments().add(payment);
 						orderRepository.save(order);
 					}
+
+            // --- Seed Discounts (Codes and Events) ---
+            try {
+                LocalDateTime nowDsc = LocalDateTime.now();
+                // Seed Discount Codes (3 variants: expired, current, upcoming)
+                if (discountCodeRepository.count() < 3) {
+                    DiscountCode codeExpired = DiscountCode.builder()
+                            .code("EXPIRED10")
+                            .description("Expired 10% off")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("10"))
+                            .minOrderAmount(new BigDecimal("100000"))
+                            .startsAt(nowDsc.minusDays(10))
+                            .endsAt(nowDsc.minusDays(3))
+                            .totalUsageLimit(100)
+                            .perUserLimit(2)
+                            .active(true)
+                            .usageCount(0)
+                            .createdAt(nowDsc)
+                            .build();
+                    DiscountCode codeCurrent = DiscountCode.builder()
+                            .code("ACTIVE15K")
+                            .description("Active 15,000 VND off")
+                            .discountType(DiscountType.AMOUNT)
+                            .discountValue(new BigDecimal("15000"))
+                            //.minOrderAmount(new BigDecimal("50000"))
+                            .startsAt(nowDsc.minusDays(2))
+                            .endsAt(nowDsc.minusDays(2).plusDays(7))
+                            .totalUsageLimit(500)
+                            .perUserLimit(3)
+                            .active(true)
+                            .usageCount(0)
+                            .createdAt(nowDsc)
+                            .build();
+                    DiscountCode codeUpcoming = DiscountCode.builder()
+                            .code("UPCOMING20")
+                            .description("Upcoming 20% off")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("20"))
+                            .minOrderAmount(new BigDecimal("50000"))
+                            .startsAt(nowDsc.plusDays(7))
+                            .endsAt(nowDsc.plusDays(14))
+                            .totalUsageLimit(200)
+                            .perUserLimit(1)
+                            .active(true)
+                            .usageCount(0)
+                            .createdAt(nowDsc)
+                            .build();
+                    discountCodeRepository.saveAll(Arrays.asList(codeExpired, codeCurrent, codeUpcoming));
+                }
+
+                // Seed Discount Events (3 variants), each mapping to products 1,2,3
+                if (discountEventRepository.count() < 3) {
+                    List<Product> firstThree = productRepository.findAll().stream()
+                            .filter(p -> p.getProductId() != null && p.getProductId() <= 3)
+                            .sorted(Comparator.comparing(Product::getProductId))
+                            .limit(3)
+                            .toList();
+
+                    DiscountEvent evExpired = DiscountEvent.builder()
+                            .name("Expired Event 10%")
+                            .description("Expired event discount for first 3 products")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("10"))
+                            .startsAt(nowDsc.minusDays(10))
+                            .endsAt(nowDsc.minusDays(3))
+                            .active(true)
+                            .createdAt(nowDsc)
+                            .build();
+                    for (Product p : firstThree) {
+                        evExpired.getProducts().add(DiscountEventProduct.builder().discountEvent(evExpired).product(p).build());
+                    }
+
+                    DiscountEvent evCurrent = DiscountEvent.builder()
+                            .name("Active Event 12%")
+                            .description("Active event discount for first 3 products")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("12"))
+                            .startsAt(nowDsc.minusDays(2))
+                            .endsAt(nowDsc.minusDays(2).plusDays(7))
+                            .active(true)
+                            .createdAt(nowDsc)
+                            .build();
+                    for (Product p : firstThree) {
+                        evCurrent.getProducts().add(DiscountEventProduct.builder().discountEvent(evCurrent).product(p).build());
+                    }
+
+                    DiscountEvent evUpcoming = DiscountEvent.builder()
+                            .name("Upcoming Event 15%")
+                            .description("Upcoming event discount for first 3 products")
+                            .discountType(DiscountType.PERCENT)
+                            .discountValue(new BigDecimal("15"))
+                            .startsAt(nowDsc.plusDays(7))
+                            .endsAt(nowDsc.plusDays(14))
+                            .active(true)
+                            .createdAt(nowDsc)
+                            .build();
+                    for (Product p : firstThree) {
+                        evUpcoming.getProducts().add(DiscountEventProduct.builder().discountEvent(evUpcoming).product(p).build());
+                    }
+
+                    discountEventRepository.saveAll(Arrays.asList(evExpired, evCurrent, evUpcoming));
+                }
+            } catch (Exception ignored) {}
 				}
 			}
 		};
 	}
-} 
+}
