@@ -27,7 +27,9 @@
 		<url/>
 	</scm>
 	<properties>
-		<java.version>22</java.version>
+		<java.version>21</java.version>
+		<!-- Ensure compilation target is Java 21 to match the runtime environment -->
+		<maven.compiler.release>21</maven.compiler.release>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -148,18 +150,12 @@
             <version>5.12.0</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>3.26.0</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>3.25.3</version> <!-- hoặc mới hơn -->
-            <scope>test</scope>
-        </dependency>
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<version>3.26.0</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -170,6 +166,14 @@
                                 <configuration>
                                     <mainClass>com.kopi.kopi.KopiApplication</mainClass>
                                 </configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.14.0</version>
+				<configuration>
+					<release>${maven.compiler.release}</release>
+				</configuration>
 			</plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
