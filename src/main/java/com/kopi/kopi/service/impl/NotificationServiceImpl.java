@@ -8,6 +8,7 @@ import com.kopi.kopi.service.EmailService;
 import com.kopi.kopi.service.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private NotificationServiceImpl self; // Self-injection để @Async hoạt động
     
     public NotificationServiceImpl(
             NotificationRepository notificationRepository,
@@ -30,6 +32,14 @@ public class NotificationServiceImpl implements NotificationService {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.emailService = emailService;
+    }
+    
+    // Self-injection để @Async method có thể được gọi từ trong class
+    // Dùng @Lazy để tránh circular dependency
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    public void setSelf(NotificationServiceImpl self) {
+        this.self = self;
     }
     
     @Override
@@ -51,7 +61,7 @@ public class NotificationServiceImpl implements NotificationService {
             statusMessage
         );
         
-        // Lưu thông báo vào database
+        // Lưu thông báo vào database (đồng bộ - trong transaction)
         Notification notification = Notification.builder()
                 .user(customer)
                 .order(order)
@@ -63,17 +73,12 @@ public class NotificationServiceImpl implements NotificationService {
                 .build();
         notificationRepository.save(notification);
         
-        // Gửi email thông báo
-        try {
-            emailService.send(
-                customer.getEmail(),
-                title,
-                message + "\n\nCảm ơn bạn đã sử dụng dịch vụ của chúng tôi!"
-            );
-        } catch (Exception ex) {
-            logger.warn("Failed to send email notification to customer {}: {}", 
-                customer.getEmail(), ex.getMessage());
-        }
+        // Gửi email thông báo bất đồng bộ (không chặn response)
+        sendEmailSafely(
+            customer.getEmail(),
+            title,
+            message + "\n\nCảm ơn bạn đã sử dụng dịch vụ của chúng tôi!"
+        );
     }
     
     @Override
@@ -113,7 +118,7 @@ public class NotificationServiceImpl implements NotificationService {
                 continue;
             }
             
-            // Lưu thông báo vào database
+            // Lưu thông báo vào database (đồng bộ - trong transaction)
             Notification notification = Notification.builder()
                     .user(staff)
                     .order(order)
@@ -125,17 +130,12 @@ public class NotificationServiceImpl implements NotificationService {
                     .build();
             notificationRepository.save(notification);
             
-            // Gửi email thông báo
-            try {
-                emailService.send(
-                    staff.getEmail(),
-                    title,
-                    message + "\n\nVui lòng kiểm tra hệ thống để xem chi tiết."
-                );
-            } catch (Exception ex) {
-                logger.warn("Failed to send email notification to staff {}: {}", 
-                    staff.getEmail(), ex.getMessage());
-            }
+            // Gửi email thông báo bất đồng bộ (không chặn response)
+            sendEmailSafely(
+                staff.getEmail(),
+                title,
+                message + "\n\nVui lòng kiểm tra hệ thống để xem chi tiết."
+            );
         }
     }
     
@@ -153,13 +153,39 @@ public class NotificationServiceImpl implements NotificationService {
                 .build();
         notificationRepository.save(notification);
         
-        // Gửi email nếu có email
+        // Gửi email nếu có email (bất đồng bộ)
         if (user.getEmail() != null && !user.getEmail().isBlank()) {
+            sendEmailSafely(user.getEmail(), title, message);
+        }
+    }
+    
+    /**
+     * Gửi email bất đồng bộ để không chặn response
+     */
+    @Async
+    public void sendEmailAsync(String to, String subject, String content) {
+        try {
+            emailService.send(to, subject, content);
+        } catch (Exception ex) {
+            logger.warn("Failed to send email notification to {}: {}", 
+                to, ex.getMessage());
+        }
+    }
+    
+    /**
+     * Helper method để gọi sendEmailAsync an toàn (fallback nếu self chưa inject)
+     */
+    private void sendEmailSafely(String to, String subject, String content) {
+        if (self != null) {
+            self.sendEmailAsync(to, subject, content);
+        } else {
+            // Fallback: gọi trực tiếp nếu self chưa inject (không async nhưng không crash)
+            logger.debug("Self not injected yet, sending email synchronously");
             try {
-                emailService.send(user.getEmail(), title, message);
+                emailService.send(to, subject, content);
             } catch (Exception ex) {
-                logger.warn("Failed to send email notification to user {}: {}", 
-                    user.getEmail(), ex.getMessage());
+                logger.warn("Failed to send email notification to {}: {}", 
+                    to, ex.getMessage());
             }
         }
     }
