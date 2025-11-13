@@ -19,8 +19,8 @@ RUN mvn -q -B -DskipTests clean package
 FROM eclipse-temurin:22-jre-alpine
 
 # Create non-root user
-RUN addgroup -S spring && adduser -S spring -G spring
-USER spring:spring
+# RUN addgroup -S spring && adduser -S spring -G spring
+# USER spring:spring
 
 WORKDIR /app
 
@@ -30,7 +30,8 @@ COPY --from=builder /build/target/kopi-0.0.1-SNAPSHOT.jar /app/app.jar
 # Default environment (override at runtime if needed)
 ENV JAVA_OPTS=""
 
-EXPOSE 8080
+# Render provides PORT (default 10000). This EXPOSE is informational.
+EXPOSE 10000
 
 # Run the application
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS ${SPRING_PROFILES_ACTIVE:+-Dspring.profiles.active=${SPRING_PROFILES_ACTIVE}} -jar /app/app.jar"]
