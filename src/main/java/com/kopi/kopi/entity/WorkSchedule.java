@@ -18,15 +18,15 @@ public class WorkSchedule {
     @Column(name = "work_schedule_id")
     private Integer workScheduleId;
 
-    @Column(name = "start_date")
+    @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
-    @Column(name = "end_date")
+    @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
 
-    @Column(name = "description")
+    @Column(name = "description", length = 255)
     private String description;
-    @Column(name = "name")
+    @Column(name = "name", nullable = false, length = 150)
     private String name;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -39,7 +39,7 @@ public class WorkSchedule {
     @ToString.Exclude
     private User createdByUser;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
