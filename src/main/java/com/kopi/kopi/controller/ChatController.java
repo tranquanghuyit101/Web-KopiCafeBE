@@ -21,15 +21,17 @@ public class ChatController {
     public ResponseEntity<ChatResponse> sendMessage(@RequestBody ChatRequest request) {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !(auth.getPrincipal() instanceof UserPrincipal)) {
-                return ResponseEntity.status(401).build();
-            }
+            Integer userId = null;
+            String userRole = "GUEST";
 
-            UserPrincipal userPrincipal = (UserPrincipal) auth.getPrincipal();
-            Integer userId = userPrincipal.getUser().getUserId();
-            String userRole = userPrincipal.getUser().getRole() != null 
-                    ? userPrincipal.getUser().getRole().getName() 
-                    : "CUSTOMER";
+            // Cho phép guest chat, nhưng nếu có authentication thì lấy thông tin user
+            if (auth != null && auth.getPrincipal() instanceof UserPrincipal) {
+                UserPrincipal userPrincipal = (UserPrincipal) auth.getPrincipal();
+                userId = userPrincipal.getUser().getUserId();
+                userRole = userPrincipal.getUser().getRole() != null
+                        ? userPrincipal.getUser().getRole().getName()
+                        : "CUSTOMER";
+            }
 
             ChatResponse response = chatService.processMessage(request, userId, userRole);
             return ResponseEntity.ok(response);
