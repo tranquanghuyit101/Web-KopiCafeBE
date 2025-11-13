@@ -1,5 +1,7 @@
 package com.kopi.kopi.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -45,13 +47,28 @@ import java.util.*;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Configuration
 public class DataInit {
+	private static final Logger log = LoggerFactory.getLogger(DataInit.class);
 	@Bean
+    @Transactional
     CommandLineRunner initData(UserRepository userRepository, RoleRepository roleRepository, CategoryRepository categoryRepository, ProductRepository productRepository, PasswordEncoder passwordEncoder, OrderRepository orderRepository, DiningTableRepository diningTableRepository, PositionRepository positionRepository, SizeRepository sizeRepository, AddOnRepository addOnRepository, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountEventRepository discountEventRepository) {
 		return args -> {
+			log.info("[DataInit] Starting data initialization...");
+			long rolesCount0 = roleRepository.count();
+			long categoriesCount0 = categoryRepository.count();
+			long productsCount0 = productRepository.count();
+			long sizesCount0 = sizeRepository.count();
+			long addOnsCount0 = addOnRepository.count();
+			long tablesCount0 = diningTableRepository.count();
+			long positionsCount0 = positionRepository.count();
+			long usersCount0 = userRepository.count();
+			log.info("[DataInit] Counts -> roles: {}, categories: {}, products: {}, sizes: {}, addOns: {}, tables: {}, positions: {}, users: {}",
+					rolesCount0, categoriesCount0, productsCount0, sizesCount0, addOnsCount0, tablesCount0, positionsCount0, usersCount0);
 			// Seed roles
-			if (roleRepository.count() == 0) {
+			if (rolesCount0 == 0) {
 				Role admin = new Role();
 				admin.setName("ADMIN");
 				admin.setDescription("System Administrator");
@@ -66,10 +83,13 @@ public class DataInit {
 				customer.setName("CUSTOMER");
 				customer.setDescription("Customer");
 				roleRepository.save(customer);
+				log.info("[DataInit] Seeded roles.");
+			} else {
+				log.info("[DataInit] Skip roles seeding (count={}).", rolesCount0);
 			}
 
             // --- Seed Categories ---
-            if (categoryRepository.count() == 0) {
+            if (categoriesCount0 == 0) {
                 categoryRepository.saveAll(List.of(
                         new Category("Coffee", true, 1),
                         new Category("Milk Tea", true, 2),
@@ -81,10 +101,13 @@ public class DataInit {
                         new Category("Cake", true, 9),
                         new Category("Soft Drink", true, 10)
                 ));
+				log.info("[DataInit] Seeded categories.");
+            } else {
+				log.info("[DataInit] Skip categories seeding (count={}).", categoriesCount0);
             }
 
             // --- Seed Products ---
-            if (productRepository.count() == 0) {
+            if (productsCount0 == 0) {
                 LocalDateTime now = LocalDateTime.now();
 
                 Map<String, Category> catMap = categoryRepository.findAll().stream()
@@ -221,20 +244,26 @@ public class DataInit {
                 });
 
                 productRepository.saveAll(products);
-            }
+				log.info("[DataInit] Seeded products ({}).", products.size());
+            } else {
+				log.info("[DataInit] Skip products seeding (count={}).", productsCount0);
+			}
 
 
             // --- Seed Sizes --- (moved above order seeding)
-            if (sizeRepository.count() == 0) {
+            if (sizesCount0 == 0) {
                 LocalDateTime now = LocalDateTime.now();
                 Size s1 = Size.builder().name("Regular").code("R").displayOrder(1).createdAt(now).updatedAt(now).build();
                 Size s2 = Size.builder().name("Large").code("L").displayOrder(2).createdAt(now).updatedAt(now).build();
                 Size s3 = Size.builder().name("Xtra Large").code("XL").displayOrder(3).createdAt(now).updatedAt(now).build();
                 sizeRepository.saveAll(Arrays.asList(s1, s2, s3));
-            }
+				log.info("[DataInit] Seeded sizes.");
+            } else {
+				log.info("[DataInit] Skip sizes seeding (count={}).", sizesCount0);
+			}
 
             // --- Seed Add-ons --- (moved above order seeding)
-            if (addOnRepository.count() == 0) {
+            if (addOnsCount0 == 0) {
                 LocalDateTime now = LocalDateTime.now();
                 List<AddOn> addOns = new ArrayList<>();
                 addOns.add(AddOn.builder().name("Extra sugar").displayOrder(1).createdAt(now).updatedAt(now).build());
@@ -247,7 +276,10 @@ public class DataInit {
                 addOns.add(AddOn.builder().name("Taro jelly").displayOrder(8).createdAt(now).updatedAt(now).build());
                 addOns.add(AddOn.builder().name("Flan").displayOrder(9).createdAt(now).updatedAt(now).build());
                 addOnRepository.saveAll(addOns);
-            }
+				log.info("[DataInit] Seeded add-ons ({}).", addOns.size());
+            } else {
+				log.info("[DataInit] Skip add-ons seeding (count={}).", addOnsCount0);
+			}
 
             // --- Seed Product Sizes (each product has all 3 sizes) ---
             if (productSizeRepository.count() == 0) {
@@ -265,6 +297,7 @@ public class DataInit {
 					if (sizeXL != null) psList.add(ProductSize.builder().product(p).size(sizeXL).price(new BigDecimal("10000")).available(true).build());
                 }
                 if (!psList.isEmpty()) productSizeRepository.saveAll(psList);
+				log.info("[DataInit] Seeded product_sizes ({}).", psList.size());
             }
 
 			// --- Seed Product Add-ons ---
@@ -354,10 +387,11 @@ public class DataInit {
 				// Soft drink intentionally left without add-ons
 
 				if (!mappings.isEmpty()) productAddOnRepository.saveAll(mappings);
+				log.info("[DataInit] Seeded product_add_ons ({}).", mappings.size());
 			}
 
             // Seed dining tables (exact values, including timestamps and QR tokens)
-            if (diningTableRepository.count() == 0) {
+            if (tablesCount0 == 0) {
                 LocalDateTime t614 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 614_000_000);
                 LocalDateTime t616 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 616_000_000);
                 LocalDateTime t617 = LocalDateTime.of(2025, 10, 28, 8, 42, 47, 617_000_000);
@@ -376,10 +410,11 @@ public class DataInit {
                     DiningTable.builder().number(10).name("Table 10").status("AVAILABLE").qrToken("1F1D8D9F-3124-428E-BDB4-1FC44206509E").createdAt(t618).updatedAt(t618).build(),
                 };
                 diningTableRepository.saveAll(Arrays.asList(tables));
+				log.info("[DataInit] Seeded dining tables (10).");
             }
 
             // Seed positions FIRST to ensure we have deterministic IDs (1=Cashier, 4=Shipper)
-            if (positionRepository.count() == 0) {
+            if (positionsCount0 == 0) {
                 LocalDateTime now = LocalDateTime.now();
                 Position cashier = Position.builder()
                         .positionName("Cashier")
@@ -406,10 +441,11 @@ public class DataInit {
                         .createdAt(now)
                         .build();
                 positionRepository.saveAll(Arrays.asList(cashier, waiter, barista, shipper));
+				log.info("[DataInit] Seeded positions.");
             }
 
             // Seed users
-			if (userRepository.count() < 4) {
+			if (usersCount0 < 4) {
                 LocalDateTime now = LocalDateTime.now();
 
 				// Fetch positions for staff (by id: 1 = Cashier, 4 = Shipper)
@@ -476,6 +512,7 @@ public class DataInit {
 				customer.setCreatedAt(now);
 				customer.setUpdatedAt(now);
 				userRepository.save(customer);
+				log.info("[DataInit] Seeded users (admin, staff, staff2, customer).");
 			}
 
             // Seed sample completed orders for the seeded customer (more complete per schema)
@@ -630,10 +667,12 @@ public class DataInit {
                     }
 
                     discountEventRepository.saveAll(Arrays.asList(evExpired, evCurrent, evUpcoming));
+					log.info("[DataInit] Seeded discount events (3) and mappings.");
                 }
             } catch (Exception ignored) {}
 				}
 			}
+			log.info("[DataInit] Completed.");
 		};
 	}
 }
