@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ public class ChatServiceImpl implements IChatService {
     private final OrderService orderService;
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private volatile long geminiCooldownUntil = 0L;
 
     @Value("${ai.gemini.key:${GEMINI_API_KEY:}}")
     private String apiKey;
@@ -51,10 +53,20 @@ public class ChatServiceImpl implements IChatService {
         }
 
         try {
-            // Nếu FE gửi kèm ngữ cảnh đặt hàng, ưu tiên xử lý như intent=order
+            String currentState = request.getOrderState();
             Map<String, Object> reqOrderCtx = request.getOrderContext();
-            if (request.getOrderState() != null || (reqOrderCtx != null && !reqOrderCtx.isEmpty())) {
-                return handleOrderIntent(userMessage, userId, request.getHistory(), userRole, reqOrderCtx, request.getOrderState());
+
+            if ("PRODUCT_INFO".equals(currentState) || "PRODUCT_DECISION".equals(currentState)) {
+                return handleProductDecision(userMessage, userId, request.getHistory(), userRole, reqOrderCtx);
+            }
+
+            if ("PRODUCT_INFO".equals(currentState)
+                    && isBrowseOnlyMessage(userMessage.toLowerCase(Locale.ROOT))) {
+                return handleBrowseOnlyIntent(userMessage, userRole);
+            }
+            // Nếu FE gửi kèm ngữ cảnh đặt hàng, ưu tiên xử lý như intent=order
+            if (currentState != null || (reqOrderCtx != null && !reqOrderCtx.isEmpty())) {
+                return handleOrderIntent(userMessage, userId, request.getHistory(), userRole, reqOrderCtx, currentState);
             }
             // Ưu tiên phân tích bằng rule-based trước (nhanh và đáng tin cậy hơn)
             String intent = analyzeIntentSmart(userMessage, userRole);
@@ -63,6 +75,8 @@ public class ChatServiceImpl implements IChatService {
             switch (intent.toLowerCase()) {
                 case "order":
                     return handleOrderIntent(userMessage, userId, request.getHistory(), userRole, request.getOrderContext(), request.getOrderState());
+                case "product_info":
+                    return handleProductInfoIntent(userMessage, userRole);
                 case "revenue":
                     if ("ADMIN".equalsIgnoreCase(userRole)) {
                         return handleRevenueIntent(userMessage);
@@ -132,20 +146,21 @@ public class ChatServiceImpl implements IChatService {
         }
 
         // Kiểm tra order intent
-        if (lower.contains("đặt") || lower.contains("mua") || lower.contains("giỏ") ||
-            lower.contains("sản phẩm") || lower.contains("xem sản phẩm") ||
-            lower.contains("tìm sản phẩm") || lower.contains("menu") || lower.contains("xem menu") ||
-            lower.contains("danh sách sản phẩm") || lower.contains("sản phẩm nào") ||
-            lower.contains("có gì") || lower.contains("bán gì") ||
-            // Tiếp diễn flow đặt hàng
-            lower.contains("tại quán") || lower.contains("bàn") ||
-            lower.contains("ship") || lower.contains("giao hàng") || lower.contains("delivery") ||
-            lower.contains("địa chỉ")) {
+        if (containsOrderKeyword(lower)) {
             return "order";
         }
 
+        // Kiểm tra xem người dùng có thể đang hỏi thông tin sản phẩm (chỉ gõ tên món)
+        if (isLikelyProductQuery(lower)) {
+            Map<String, Object> candidate = findProductByNameFuzzy(message);
+            if (candidate != null) {
+                return "product_info";
+            }
+        }
+
         // Nếu không match rule-based, thử dùng Gemini AI (nếu có API key)
-        if (apiKey != null && !apiKey.trim().isEmpty()) {
+        long now = System.currentTimeMillis();
+        if (apiKey != null && !apiKey.trim().isEmpty() && now >= geminiCooldownUntil) {
             try {
                 return analyzeIntent(message, userRole);
             } catch (Exception e) {
@@ -214,8 +229,13 @@ public class ChatServiceImpl implements IChatService {
             }
 
             return intent;
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            geminiCooldownUntil = System.currentTimeMillis() + 60_000;
+            return fallbackIntent(message);
+        } catch (HttpClientErrorException e) {
+            geminiCooldownUntil = System.currentTimeMillis() + 15_000;
+            return fallbackIntent(message);
         } catch (Exception e) {
-            e.printStackTrace();
             return fallbackIntent(message);
         }
     }
@@ -223,13 +243,14 @@ public class ChatServiceImpl implements IChatService {
     private String fallbackIntent(String message) {
         // Fallback: phân tích đơn giản với từ khóa mở rộng (không gọi API ngoài)
         String lower = message.toLowerCase().trim();
-        if (lower.contains("đặt") || lower.contains("mua") || lower.contains("giỏ") ||
-            lower.contains("sản phẩm") || lower.contains("xem sản phẩm") ||
-            lower.contains("tìm sản phẩm") || lower.contains("menu") || lower.contains("xem menu") ||
-            lower.contains("tại quán") || lower.contains("bàn") ||
-            lower.contains("ship") || lower.contains("giao hàng") || lower.contains("delivery") ||
-            lower.contains("địa chỉ")) {
+        if (containsOrderKeyword(lower)) {
             return "order";
+        }
+        if (isLikelyProductQuery(lower)) {
+            Map<String, Object> candidate = findProductByNameFuzzy(message);
+            if (candidate != null) {
+                return "product_info";
+            }
         }
         if (lower.contains("doanh thu") || lower.contains("báo cáo") || lower.contains("thống kê") ||
             lower.contains("xem doanh thu") || lower.contains("doanh thu hôm nay") ||
@@ -249,6 +270,10 @@ public class ChatServiceImpl implements IChatService {
     private ChatResponse handleOrderIntent(String message, Integer userId, List<ChatMessage> history, String userRole, Map<String, Object> orderContext, String orderState) {
         try {
             String lowerMessage = message.toLowerCase().trim();
+
+            if (isBrowseOnlyMessage(lowerMessage)) {
+                return handleBrowseOnlyIntent(message, userRole);
+            }
 
             // Kiểm tra xem có phải là yêu cầu xem menu/tất cả sản phẩm không
             boolean isViewMenu = lowerMessage.contains("xem menu") ||
@@ -331,6 +356,144 @@ public class ChatServiceImpl implements IChatService {
                     .intent("order")
                     .build();
         }
+    }
+
+    private ChatResponse handleProductInfoIntent(String message, String userRole) {
+        try {
+            Map<String, Object> candidate = findProductByNameFuzzy(message);
+            if (candidate == null) {
+                return handleBrowseOnlyIntent(message, userRole);
+            }
+            Integer productId = (Integer) candidate.get("id");
+            Map<String, Object> detail = getProductById(productId);
+            Map<String, Object> product = detail != null ? detail : candidate;
+
+            String productName = extractProductDisplayName(product);
+            java.math.BigDecimal price = extractPrice(product);
+            Integer stock = product.get("stock") instanceof Number ? ((Number) product.get("stock")).intValue() : null;
+            String img = product.get("img") != null ? product.get("img").toString() : null;
+            String desc = product.get("desc") != null ? product.get("desc").toString() : "";
+            if (desc == null || desc.trim().isEmpty()) {
+                desc = "Hương vị hài hoà, phù hợp dùng lạnh hoặc nóng. Thưởng thức món " + productName + " để cảm nhận sự cân bằng giữa vị đậm đà và hậu ngọt dịu.";
+            }
+
+            StringBuilder response = new StringBuilder("📝 Thông tin món **")
+                    .append(productName)
+                    .append("**\n\n");
+            if (price.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                response.append("💰 Giá: ").append(formatPrice(price)).append(" VNĐ\n");
+            } else {
+                response.append("💰 Giá: đang cập nhật\n");
+            }
+            if (stock != null) {
+                response.append("📦 Còn: ").append(stock).append(" suất\n");
+            }
+            response.append("🥤 Hương vị: ").append(desc).append("\n\n")
+                    .append("Bạn muốn xem chi tiết hay đặt thử món này? 😊");
+
+            Map<String, Object> productInfo = new HashMap<>();
+            productInfo.put("id", productId);
+            productInfo.put("name", productName);
+            productInfo.put("price", price);
+            productInfo.put("priceFormatted", formatPrice(price));
+            productInfo.put("stock", stock);
+            productInfo.put("description", desc);
+            if (img != null) {
+                productInfo.put("img", img);
+            }
+
+            Map<String, Object> context = new HashMap<>();
+            context.put("productId", productId);
+            context.put("productName", productName);
+
+            return ChatResponse.builder()
+                    .message(response.toString())
+                    .intent("product_info")
+                    .orderState("PRODUCT_DECISION")
+                    .orderContext(context)
+                    .data(Map.of("productInfo", productInfo))
+                    .suggestions(List.of(
+                            ChatMessage.builder().role("assistant").content("Xem chi tiết " + productName).build(),
+                            ChatMessage.builder().role("assistant").content("Đặt " + productName).build(),
+                            ChatMessage.builder().role("assistant").content("Gợi ý món khác").build()
+                    ))
+                    .build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ChatResponse.builder()
+                    .message("Xin lỗi, tôi chưa lấy được thông tin món. Bạn thử lại sau hoặc xem menu nhé!")
+                    .intent("product_info")
+                    .suggestions(getDefaultSuggestions(userRole))
+                    .build();
+        }
+    }
+
+    private ChatResponse handleProductDecision(String message,
+                                               Integer userId,
+                                               List<ChatMessage> history,
+                                               String userRole,
+                                               Map<String, Object> orderContext) {
+        if (orderContext == null) {
+            return handleBrowseOnlyIntent(message, userRole);
+        }
+        String lower = message.toLowerCase(Locale.ROOT).trim();
+        String productName = orderContext.get("productName") != null ? orderContext.get("productName").toString() : null;
+
+        if (lower.isEmpty()) {
+            return handleProductInfoIntent(productName != null ? productName : message, userRole);
+        }
+
+        Map<String, Object> potentialProduct = findProductByNameFuzzy(message);
+        if (potentialProduct != null) {
+            Integer currentProductId = null;
+            if (orderContext.get("productId") instanceof Number num) {
+                currentProductId = num.intValue();
+            }
+            Integer newProductId = (Integer) potentialProduct.get("id");
+            if (newProductId != null && !newProductId.equals(currentProductId)) {
+                return handleProductInfoIntent(message, userRole);
+            }
+        }
+
+        if (containsOrderKeyword(lower) || lower.contains("đặt") || lower.contains("mua") || lower.contains("order") || lower.contains("lấy")) {
+            return handleOrderIntent(message, userId, history, userRole, orderContext, "PRODUCT_DECISION");
+        }
+
+        if (lower.contains("xem chi tiết") || lower.contains("chi tiết") || lower.contains("thông tin")) {
+            return handleProductInfoIntent(productName != null ? productName : message, userRole);
+        }
+
+        if (isBrowseOnlyMessage(lower) || lower.contains("gợi ý")) {
+            return handleBrowseOnlyIntent(message, userRole);
+        }
+
+        return ChatResponse.builder()
+                .message("Bạn muốn **xem chi tiết** hay **đặt ngay** món này? 😊")
+                .intent("product_info")
+                .orderState("PRODUCT_DECISION")
+                .orderContext(orderContext)
+                .suggestions(List.of(
+                        ChatMessage.builder().role("assistant").content("Xem chi tiết " + (productName != null ? productName : "món này")).build(),
+                        ChatMessage.builder().role("assistant").content("Đặt " + (productName != null ? productName : "món này")).build(),
+                        ChatMessage.builder().role("assistant").content("Gợi ý món khác").build()
+                ))
+                .build();
+    }
+
+    private ChatResponse handleBrowseOnlyIntent(String message, String userRole) {
+        String lower = message.toLowerCase(Locale.ROOT);
+        if (lower.contains("menu") || lower.contains("món khác") || lower.contains("xem thêm")) {
+            return showMenuPreview(5, "📋 Một vài món bạn có thể tham khảo:\n\n");
+        }
+        return ChatResponse.builder()
+                .message("Không sao! Bạn có thể xem menu hoặc gõ tên món bất kỳ để mình mô tả chi tiết nhé 😊")
+                .intent("product_info")
+                .suggestions(List.of(
+                        ChatMessage.builder().role("assistant").content("Xem menu").build(),
+                        ChatMessage.builder().role("assistant").content("Matcha Cookie").build(),
+                        ChatMessage.builder().role("assistant").content("Matcha Mousse").build()
+                ))
+                .build();
     }
 
     // Helper class để lưu kết quả parse order message
@@ -578,7 +741,18 @@ public class ChatServiceImpl implements IChatService {
 
     private Map<String, Object> getProductById(Integer productId) {
         try {
-            return productService.detail(productId);
+            Map<String, Object> response = productService.detail(productId);
+            if (response == null) return null;
+            Object dataObj = response.get("data");
+            if (dataObj instanceof List<?> dataList && !dataList.isEmpty()) {
+                Object first = dataList.get(0);
+                if (first instanceof Map<?, ?> map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> product = (Map<String, Object>) map;
+                    return product;
+                }
+            }
+            return null;
         } catch (Exception e) {
             return null;
         }
@@ -604,6 +778,42 @@ public class ChatServiceImpl implements IChatService {
         if (nameObj == null) nameObj = product.get("product_name");
         if (nameObj == null) nameObj = product.get("title");
         return nameObj != null ? nameObj.toString() : "sản phẩm này";
+    }
+
+    private ChatResponse showMenuPreview(int limit, String header) {
+        try {
+            Map<String, Object> products = productService.list(null, null, null, null, Math.max(limit, 3), 1);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> productList = (List<Map<String, Object>>) products.get("data");
+            if (productList == null || productList.isEmpty()) {
+                return ChatResponse.builder()
+                        .message("Hiện chưa có sản phẩm để gợi ý. Bạn thử lại sau nhé!")
+                        .intent("product_info")
+                        .suggestions(getDefaultSuggestions("CUSTOMER"))
+                        .build();
+            }
+            return showProductList(productList, header);
+        } catch (Exception e) {
+            return ChatResponse.builder()
+                    .message("Tôi chưa lấy được danh sách món. Bạn có thể gõ tên món để mình mô tả nhé!")
+                    .intent("product_info")
+                    .suggestions(getDefaultSuggestions("CUSTOMER"))
+                    .build();
+        }
+    }
+
+    private boolean isBrowseOnlyMessage(String lower) {
+        if (lower == null) return false;
+        return lower.contains("xem món") ||
+                lower.contains("xem thêm") ||
+                lower.contains("xem món khác") ||
+                lower.contains("chỉ xem") ||
+                lower.contains("không đặt") ||
+                lower.contains("xem thôi") ||
+                lower.contains("để xem") ||
+                lower.contains("coi thử") ||
+                lower.contains("gợi ý") ||
+                lower.contains("xem chi tiết");
     }
 
     // ==========================
@@ -1334,6 +1544,28 @@ public class ChatServiceImpl implements IChatService {
             result = result.replaceAll("\\b" + word + "\\b", "").trim();
         }
         return result.trim();
+    }
+
+    private boolean containsOrderKeyword(String lower) {
+        return lower.contains("đặt") || lower.contains("mua") || lower.contains("giỏ") ||
+                lower.contains("sản phẩm") || lower.contains("xem sản phẩm") ||
+                lower.contains("tìm sản phẩm") || lower.contains("menu") || lower.contains("xem menu") ||
+                lower.contains("danh sách sản phẩm") || lower.contains("sản phẩm nào") ||
+                lower.contains("có gì") || lower.contains("bán gì") ||
+                lower.contains("tại quán") || lower.contains("bàn") ||
+                lower.contains("ship") || lower.contains("giao hàng") || lower.contains("delivery") ||
+                lower.contains("địa chỉ");
+    }
+
+    private boolean isLikelyProductQuery(String lower) {
+        if (lower == null) return false;
+        String trimmed = lower.trim();
+        if (trimmed.isEmpty()) return false;
+        if (containsOrderKeyword(trimmed)) return false;
+        if (trimmed.length() > 60) return false;
+        if (trimmed.contains("?")) return false;
+        String[] words = trimmed.split("\\s+");
+        return words.length <= 5;
     }
 
     private String extractPeriod(String message) {
