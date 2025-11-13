@@ -63,7 +63,10 @@ public class SecurityConfig {
   @Bean
   public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
       var cfg = new org.springframework.web.cors.CorsConfiguration();
-      cfg.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+      cfg.setAllowedOrigins(java.util.List.of(
+              "http://localhost:3000",
+              "https://kopi-coffee-fe.vercel.app"
+      ));
       cfg.setAllowedMethods(java.util.List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
       cfg.setAllowedHeaders(java.util.List.of("*"));
       cfg.setAllowCredentials(true);
