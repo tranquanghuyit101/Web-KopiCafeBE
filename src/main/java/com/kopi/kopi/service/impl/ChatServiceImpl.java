@@ -270,7 +270,7 @@ public class ChatServiceImpl implements IChatService {
             // Nếu không tìm thấy sản phẩm, hiển thị menu
             if (parseResult.productId == null) {
                 // Tìm sản phẩm theo từ khóa
-                String searchTerm = extractProductName(message);
+                String searchTerm = extractProductNameFromMessage(message);
                 Map<String, Object> products = productService.list(null, null, null, searchTerm, 10, 1);
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> productList = (List<Map<String, Object>>) products.get("data");
@@ -303,6 +303,7 @@ public class ChatServiceImpl implements IChatService {
                             .intent("order")
                             .build();
                 }
+                parseResult.productName = parseResult.productName != null ? parseResult.productName : extractProductDisplayName(product);
                 return askQuantity(product);
             }
 
@@ -316,6 +317,7 @@ public class ChatServiceImpl implements IChatService {
                             .intent("order")
                             .build();
                 }
+                parseResult.productName = parseResult.productName != null ? parseResult.productName : (String) product.get("name");
                 return askDeliveryType(product, parseResult.quantity);
             }
 
@@ -363,9 +365,16 @@ public class ChatServiceImpl implements IChatService {
             if (addr != null) result.address = String.valueOf(addr);
         }
 
-        // Parse từ message hiện tại
-        Integer quantity = extractQuantity(lower);
-        result.quantity = quantity;
+        boolean expectingAddress = "ASKING_ADDRESS".equals(orderState);
+        boolean expectingTable = "ASKING_TABLE".equals(orderState);
+
+        // Parse từ message hiện tại (chỉ ghi đè khi chưa có sẵn trong context)
+        if (!expectingAddress && !expectingTable) {
+            Integer quantityCandidate = extractQuantity(lower);
+            if (result.quantity == null && quantityCandidate != null) {
+                result.quantity = quantityCandidate;
+            }
+        }
 
         // Tìm delivery type
         if (lower.contains("tại quán") || lower.contains("tại bàn") || lower.contains("dine in") ||
@@ -376,17 +385,15 @@ public class ChatServiceImpl implements IChatService {
         } else if (lower.contains("ship") || lower.contains("giao hàng") || lower.contains("delivery") ||
                    lower.contains("địa chỉ") || lower.contains("address")) {
             result.deliveryType = "delivery";
-            String address = extractAddress(message);
-            result.address = address;
         }
 
         // Tìm sản phẩm từ message hiện tại
-        String productName = extractProductName(message);
+        String productName = extractProductNameFromMessage(message);
         if (productName != null && !productName.trim().isEmpty()) {
             Map<String, Object> product = findProductByName(productName);
             if (product != null) {
                 result.productId = (Integer) product.get("id");
-                result.productName = (String) product.get("name");
+                result.productName = extractProductDisplayName(product);
             }
         }
 
@@ -399,12 +406,12 @@ public class ChatServiceImpl implements IChatService {
 
                 // Tìm sản phẩm từ message của user
                 if ("user".equals(msg.getRole()) && result.productId == null) {
-                    String prevProductName = extractProductName(msgContent);
+                    String prevProductName = extractProductNameFromMessage(msgContent);
                     if (prevProductName != null && !prevProductName.trim().isEmpty()) {
                         Map<String, Object> product = findProductByName(prevProductName);
                         if (product != null) {
                             result.productId = (Integer) product.get("id");
-                            result.productName = (String) product.get("name");
+                            result.productName = extractProductDisplayName(product);
                         }
                     }
                 }
@@ -426,7 +433,7 @@ public class ChatServiceImpl implements IChatService {
                                 Map<String, Object> product = findProductByName(extractedProductName);
                                 if (product != null) {
                                     result.productId = (Integer) product.get("id");
-                                    result.productName = (String) product.get("name");
+                                    result.productName = extractProductDisplayName(product);
                                 }
                             }
                         }
@@ -436,7 +443,7 @@ public class ChatServiceImpl implements IChatService {
                         Map<String, Object> hintProduct = findProductByNameFuzzy(msgContent);
                         if (hintProduct != null) {
                             result.productId = (Integer) hintProduct.get("id");
-                            result.productName = (String) hintProduct.get("name");
+                            result.productName = extractProductDisplayName(hintProduct);
                         }
                     }
                 }
@@ -577,6 +584,28 @@ public class ChatServiceImpl implements IChatService {
         }
     }
 
+    private java.math.BigDecimal extractPrice(Map<String, Object> product) {
+        if (product == null) return java.math.BigDecimal.ZERO;
+        Object priceObj = product.get("price");
+        if (priceObj == null) priceObj = product.get("base_price");
+        if (priceObj == null) priceObj = product.get("unit_price");
+        if (priceObj == null) return java.math.BigDecimal.ZERO;
+        try {
+            return new java.math.BigDecimal(priceObj.toString());
+        } catch (NumberFormatException ex) {
+            return java.math.BigDecimal.ZERO;
+        }
+    }
+
+    private String extractProductDisplayName(Map<String, Object> product) {
+        if (product == null) return "sản phẩm này";
+        Object nameObj = product.get("name");
+        if (nameObj == null) nameObj = product.get("productName");
+        if (nameObj == null) nameObj = product.get("product_name");
+        if (nameObj == null) nameObj = product.get("title");
+        return nameObj != null ? nameObj.toString() : "sản phẩm này";
+    }
+
     // ==========================
     // Fuzzy matching helpers
     // ==========================
@@ -672,9 +701,10 @@ public class ChatServiceImpl implements IChatService {
     private ChatResponse showProductList(List<Map<String, Object>> productList, String header) {
         StringBuilder response = new StringBuilder(header);
         for (Map<String, Object> p : productList) {
+            java.math.BigDecimal price = extractPrice(p);
             response.append(String.format("• %s - %s VNĐ (Còn: %s)\n",
-                    p.get("name"),
-                    formatPrice(p.get("price")),
+                    extractProductDisplayName(p),
+                    formatPrice(price),
                     p.get("stock") != null ? p.get("stock") : 0));
         }
         response.append("\nBạn muốn đặt món nào? 😊");
@@ -691,7 +721,7 @@ public class ChatServiceImpl implements IChatService {
     }
 
     private ChatResponse askQuantity(Map<String, Object> product) {
-        String productName = product.get("name") != null ? String.valueOf(product.get("name")) : "sản phẩm này";
+        String productName = extractProductDisplayName(product);
         String message = String.format("Bạn muốn đặt bao nhiêu %s? 😊\n\n" +
                 "Ví dụ: \"2 cốc\" hoặc \"3\"", productName);
 
@@ -714,10 +744,10 @@ public class ChatServiceImpl implements IChatService {
     }
 
     private ChatResponse askDeliveryType(Map<String, Object> product, Integer quantity) {
-        String productName = (String) product.get("name");
+        String productName = extractProductDisplayName(product);
         String message = String.format("Bạn muốn uống tại quán hay ship đi cho món %s x%d? 🚚\n\n" +
                 "• Tại quán: Chọn số bàn\n" +
-                "• Ship đi: Cung cấp địa chỉ giao hàng", productName, quantity != null ? quantity : 1);
+                "• Ship đi: Mình sẽ hướng dẫn nhập địa chỉ & số điện thoại ở bước thanh toán", productName, quantity != null ? quantity : 1);
 
         Map<String, Object> context = new HashMap<>();
         context.put("productId", product.get("id"));
@@ -766,39 +796,26 @@ public class ChatServiceImpl implements IChatService {
             }
 
             if ("delivery".equals(parseResult.deliveryType)) {
-                // Nếu chưa có địa chỉ, yêu cầu địa chỉ
-                if (parseResult.address == null || parseResult.address.trim().isEmpty()) {
-                    Map<String, Object> product = getProductById(parseResult.productId);
-                    if (product == null) {
-                        return ChatResponse.builder()
-                                .message("Xin lỗi, không tìm thấy sản phẩm.")
-                                .intent("order")
-                                .build();
-                    }
-                    return askAddress(product, parseResult.quantity);
-                }
-
-                // Với flow giao hàng qua chatbot: thêm sản phẩm vào giỏ và điều hướng tới /cart
+                // Với flow giao hàng qua chatbot: thêm sản phẩm vào giỏ và nhắc người dùng nhập thông tin ở trang thanh toán
                 Map<String, Object> product = getProductById(parseResult.productId);
-                java.math.BigDecimal price = product != null && product.get("price") != null
-                        ? new java.math.BigDecimal(product.get("price").toString())
-                        : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal price = extractPrice(product);
                 int qty = parseResult.quantity != null ? parseResult.quantity : 1;
+                String productName = parseResult.productName != null ? parseResult.productName :
+                        extractProductDisplayName(product);
                 String message = String.format("✅ Đã thêm vào giỏ hàng:\n\n" +
                                 "📦 %s x%d\n" +
-                                "🏠 Giao đến: %s\n" +
                                 "💰 Tạm tính: %s VNĐ\n\n" +
-                                "Mình sẽ chuyển bạn tới trang giỏ hàng để xác nhận và thanh toán nhé.",
+                                "💡 Vui lòng nhập địa chỉ giao hàng và số điện thoại ở trang giỏ hàng trước khi thanh toán nhé.",
                         parseResult.productName != null ? parseResult.productName : "Sản phẩm",
                         qty,
-                        parseResult.address,
                         formatPrice(price.multiply(java.math.BigDecimal.valueOf(qty))));
 
                 Map<String, Object> orderData = new HashMap<>();
                 orderData.put("productId", parseResult.productId);
-                orderData.put("productName", parseResult.productName);
+                orderData.put("productName", productName);
                 orderData.put("quantity", qty);
-                orderData.put("price", price);
+                orderData.put("price", price.doubleValue());
+                orderData.put("subtotal", price.multiply(java.math.BigDecimal.valueOf(qty)).doubleValue());
                 if (product != null && product.get("img") != null) {
                     orderData.put("img", product.get("img"));
                 }
@@ -841,7 +858,7 @@ public class ChatServiceImpl implements IChatService {
     }
 
     private ChatResponse askTableNumber(Map<String, Object> product, Integer quantity) {
-        String productName = (String) product.get("name");
+        String productName = extractProductDisplayName(product);
         String message = String.format("Bạn đang ngồi ở bàn số mấy? 🪑\n\n" +
                 "Ví dụ: \"Bàn 1\" hoặc \"Bàn 5\"");
 
@@ -866,7 +883,7 @@ public class ChatServiceImpl implements IChatService {
     }
 
     private ChatResponse askAddress(Map<String, Object> product, Integer quantity) {
-        String productName = (String) product.get("name");
+        String productName = extractProductDisplayName(product);
         String message = String.format("Vui lòng cung cấp địa chỉ giao hàng 📍\n\n" +
                 "Ví dụ: \"123 đường ABC, Quận XYZ, Đà Nẵng\"");
 
@@ -916,9 +933,7 @@ public class ChatServiceImpl implements IChatService {
 
                 // Lấy thông tin sản phẩm để tính tổng tiền
                 Map<String, Object> product = getProductById(parseResult.productId);
-                java.math.BigDecimal price = product != null && product.get("price") != null
-                    ? new java.math.BigDecimal(product.get("price").toString())
-                    : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal price = extractPrice(product);
                 int qty = parseResult.quantity != null ? parseResult.quantity : 1;
                 java.math.BigDecimal total = price.multiply(java.math.BigDecimal.valueOf(qty));
 
@@ -935,10 +950,13 @@ public class ChatServiceImpl implements IChatService {
                 Map<String, Object> orderData = new HashMap<>();
                 orderData.put("orderId", orderId);
                 orderData.put("tableNumber", tableNumber);
-                orderData.put("productName", parseResult.productName);
+                String productName = parseResult.productName != null ? parseResult.productName :
+                        extractProductDisplayName(product);
+                orderData.put("productName", productName);
                 orderData.put("quantity", parseResult.quantity);
                 orderData.put("productId", parseResult.productId);
-                orderData.put("price", price);
+                orderData.put("price", price.doubleValue());
+                orderData.put("subtotal", total.doubleValue());
                 if (product != null && product.get("img") != null) {
                     orderData.put("img", product.get("img"));
                 }
@@ -1308,7 +1326,7 @@ public class ChatServiceImpl implements IChatService {
                 .build();
     }
 
-    private String extractProductName(String message) {
+    private String extractProductNameFromMessage(String message) {
         // Đơn giản: loại bỏ các từ không cần thiết
         String[] stopWords = {"tôi", "muốn", "mua", "đặt", "xem", "cho", "tôi", "của", "với", "có", "không", "là", "gì", "nào"};
         String result = message.toLowerCase();
