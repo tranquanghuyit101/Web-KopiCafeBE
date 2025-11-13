@@ -1,5 +1,5 @@
 spring.application.name=kopi
-server.port=8080
+server.port=${PORT:8080}
 
 # --- SQL Server ---
 spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=Kopi;encrypt=true;trustServerCertificate=true

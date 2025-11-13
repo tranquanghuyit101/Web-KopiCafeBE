@@ -178,6 +178,18 @@ CREATE TABLE dbo.payments (
     created_at   DATETIME2(3)  NOT NULL
 );
 
+-- NOTIFICATIONS
+CREATE TABLE dbo.notifications (
+    notification_id INT IDENTITY(1,1) NOT NULL,
+    user_id         INT NOT NULL,
+    order_id        INT NULL,
+    title           NVARCHAR(255) NOT NULL,
+    message         NVARCHAR(1000) NOT NULL,
+    type            NVARCHAR(50) NOT NULL,
+    is_read         BIT NOT NULL,
+    created_at      DATETIME2(3) NOT NULL
+);
+
 -- TABLES
 CREATE TABLE dbo.tables (
     table_id INT IDENTITY(1,1) NOT NULL,
@@ -331,6 +343,15 @@ CREATE TABLE dbo.employee_shifts (
     updated_at         DATETIME2(3) NULL
 );
 
+-- POSITION_SHIFT_RULES (scheduling rules per position and shift)
+CREATE TABLE dbo.position_shift_rules (
+    rule_id        INT IDENTITY(1,1) NOT NULL,
+    position_id    INT NOT NULL,
+    shift_id       INT NOT NULL,
+    is_allowed     BIT NOT NULL,
+    required_count INT NULL
+);
+
 ----------------------------------------------------------------
 -- B) ADD PRIMARY KEYS
 ----------------------------------------------------------------
@@ -363,6 +384,8 @@ ALTER TABLE dbo.shift             ADD CONSTRAINT PK_shift PRIMARY KEY (shift_id)
 ALTER TABLE dbo.recurrence_patterns ADD CONSTRAINT PK_recurrence_patterns PRIMARY KEY (recurrence_id);
 ALTER TABLE dbo.work_schedules    ADD CONSTRAINT PK_work_schedules PRIMARY KEY (work_schedule_id);
 ALTER TABLE dbo.employee_shifts   ADD CONSTRAINT PK_employee_shifts PRIMARY KEY (employee_shift_id);
+ALTER TABLE dbo.notifications     ADD CONSTRAINT PK_notifications PRIMARY KEY (notification_id);
+ALTER TABLE dbo.position_shift_rules ADD CONSTRAINT PK_position_shift_rules PRIMARY KEY (rule_id);
 
 ----------------------------------------------------------------
 -- C) ADD FOREIGN KEYS
@@ -464,6 +487,16 @@ ALTER TABLE dbo.employee_shifts
     ADD CONSTRAINT FK_employee_shifts_created_by FOREIGN KEY (created_by_user_id) REFERENCES dbo.users(user_id) ON DELETE NO ACTION;
 ALTER TABLE dbo.employee_shifts
     ADD CONSTRAINT FK_employee_shifts_updated_by FOREIGN KEY (updated_by_user_id) REFERENCES dbo.users(user_id) ON DELETE NO ACTION;
+
+-- Notifications FKs
+ALTER TABLE dbo.notifications
+    ADD CONSTRAINT FK_notifications_user FOREIGN KEY (user_id) REFERENCES dbo.users(user_id),
+        CONSTRAINT FK_notifications_order FOREIGN KEY (order_id) REFERENCES dbo.orders(order_id);
+
+-- Position shift rules FKs
+ALTER TABLE dbo.position_shift_rules
+    ADD CONSTRAINT FK_position_shift_rules_position FOREIGN KEY (position_id) REFERENCES dbo.positions(position_id) ON DELETE CASCADE,
+        CONSTRAINT FK_position_shift_rules_shift FOREIGN KEY (shift_id) REFERENCES dbo.shift(shift_id) ON DELETE CASCADE;
 
 ----------------------------------------------------------------
 -- D) ADD CHECK CONSTRAINTS
@@ -641,6 +674,14 @@ ALTER TABLE dbo.employee_shifts
     ADD CONSTRAINT DF_employee_shifts_status DEFAULT (N'assigned') FOR status,
         CONSTRAINT DF_employee_shifts_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
 
+ALTER TABLE dbo.notifications
+    ADD CONSTRAINT DF_notifications_is_read DEFAULT (0) FOR is_read,
+        CONSTRAINT DF_notifications_created_at DEFAULT GETDATE() FOR created_at;
+
+ALTER TABLE dbo.position_shift_rules
+    ADD CONSTRAINT DF_position_shift_rules_is_allowed DEFAULT (0) FOR is_allowed,
+        CONSTRAINT DF_position_shift_rules_required_count DEFAULT (0) FOR required_count;
+
 ----------------------------------------------------------------
 -- F) CREATE INDEXES & UNIQUE CONSTRAINTS
 ----------------------------------------------------------------
@@ -699,6 +740,10 @@ CREATE UNIQUE INDEX UX_payments_txn_ref_notnull ON dbo.payments(txn_ref) WHERE t
 CREATE INDEX IX_payments_order ON dbo.payments(order_id);
 CREATE INDEX IX_payments_status ON dbo.payments(status);
 
+-- NOTIFICATIONS
+CREATE INDEX IX_notifications_user_created ON dbo.notifications(user_id, created_at DESC);
+CREATE INDEX IX_notifications_user_unread ON dbo.notifications(user_id, is_read) WHERE is_read = 0;
+
  -- Removed indexes for dbo.schedules
 
 -- INVENTORY LOG
@@ -711,6 +756,10 @@ CREATE INDEX IX_positions_updated_by ON dbo.positions(updated_by_user_id);
 
 CREATE UNIQUE INDEX UQ_shift_name ON dbo.shift(shift_name);
 CREATE INDEX IX_shift_is_active ON dbo.shift(is_active);
+
+-- Position shift rules
+CREATE INDEX IX_position_shift_rules_position ON dbo.position_shift_rules(position_id);
+CREATE INDEX IX_position_shift_rules_shift ON dbo.position_shift_rules(shift_id);
 
 CREATE INDEX IX_work_schedules_date ON dbo.work_schedules(start_date, end_date);
 

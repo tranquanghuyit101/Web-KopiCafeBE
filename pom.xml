@@ -154,12 +154,12 @@
             <version>3.26.0</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>3.25.3</version> <!-- hoặc mới hơn -->
-            <scope>test</scope>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.assertj</groupId>-->
+<!--            <artifactId>assertj-core</artifactId>-->
+<!--            <version>3.25.3</version> &lt;!&ndash; hoặc mới hơn &ndash;&gt;-->
+<!--            <scope>test</scope>-->
+<!--        </dependency>-->
 	</dependencies>
 
 	<build>
