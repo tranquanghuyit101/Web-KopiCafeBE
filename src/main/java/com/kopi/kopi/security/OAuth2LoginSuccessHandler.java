@@ -30,7 +30,7 @@ public class OAuth2LoginSuccessHandler implements org.springframework.security.w
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
 
-    @Value("${app.frontend.url:http://localhost:3000}")
+    @Value("${app.frontend.url:https://kopi-coffee-fe.vercel.app}")
     private String frontendUrl;
 
     @Override
