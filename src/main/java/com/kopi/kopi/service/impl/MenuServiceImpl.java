@@ -5,6 +5,7 @@ import com.kopi.kopi.entity.Category;
 import com.kopi.kopi.repository.CategoryRepository;
 import com.kopi.kopi.service.MenuService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -18,6 +19,7 @@ public class MenuServiceImpl implements MenuService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<MenuController.MenuCategoryDto> getMenu() {
         List<Category> categories = categoryRepository.findAll();
         return categories.stream().map(cat -> {

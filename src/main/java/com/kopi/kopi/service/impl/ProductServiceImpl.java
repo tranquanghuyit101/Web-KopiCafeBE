@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> list(Integer categoryId, String orderBy, String sort, String searchByName, Integer limit, Integer page) {
         Sort s = Sort.unsorted();
         if (orderBy != null && !orderBy.isBlank()) {
@@ -84,6 +86,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> detail(Integer id) {
         Product p = productRepository.findById(id).orElseThrow();
         Map<String, Object> item = new HashMap<>();
@@ -134,6 +137,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public ResponseEntity<?> create(org.springframework.web.multipart.MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price) {
         Category category = categoryRepository.findById(categoryId).orElseThrow();
         Product p = new Product();
@@ -162,6 +166,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public ResponseEntity<?> update(Integer id, org.springframework.web.multipart.MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price) {
         Product p = productRepository.findById(id).orElseThrow();
         if (name != null && !name.isBlank()) {
@@ -191,6 +196,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public ResponseEntity<?> delete(Integer id) {
         Product p = productRepository.findById(id).orElse(null);
         if (p == null) {

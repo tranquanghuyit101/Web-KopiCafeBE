@@ -4,6 +4,7 @@ import com.kopi.kopi.entity.Category;
 import com.kopi.kopi.repository.CategoryRepository;
 import com.kopi.kopi.service.CategoryService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -19,6 +20,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> list() {
         List<Category> list = categoryRepository.findAll();
         List<Map<String, Object>> items = list.stream().map(c -> {
