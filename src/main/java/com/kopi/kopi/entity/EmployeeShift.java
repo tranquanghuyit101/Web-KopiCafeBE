@@ -37,10 +37,10 @@ public class EmployeeShift {
     @Column(name = "shift_date", nullable = false)
     private LocalDate shiftDate;
 
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, length = 20)
     private String status;
 
-    @Column(name = "notes")
+    @Column(name = "notes", length = 255)
     private String notes;
 
     @Column(name = "override_start_time")
@@ -66,7 +66,7 @@ public class EmployeeShift {
     @ToString.Exclude
     private User createdByUser;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     @ManyToOne(fetch = FetchType.LAZY)

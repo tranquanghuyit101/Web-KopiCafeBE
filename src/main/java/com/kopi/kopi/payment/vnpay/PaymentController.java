@@ -25,7 +25,7 @@ public class PaymentController {
 	private final OrderRepository orderRepository;
 	private final PaymentRepository paymentRepository;
 
-	@Value("${app.frontend.url:http://localhost:3000}")
+	@Value("${app.frontend.url:https://kopi-coffee-fe.vercel.app}")
 	private String frontendUrl;
 
 	public PaymentController(PaymentService paymentService, OrderRepository orderRepository, PaymentRepository paymentRepository) {

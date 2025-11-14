@@ -41,6 +41,7 @@ public class ShippingServiceImpl implements ShippingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<?> getLocation(Integer orderId, String roleName, Integer userId) {
         // Allow only the customer of the order OR the assigned shipper to read location
         Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
@@ -58,6 +59,7 @@ public class ShippingServiceImpl implements ShippingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<?> getOrderShippingInfo(Integer orderId, String roleName, Integer userId) {
         Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
         if (orderOpt.isEmpty()) return ResponseEntity.status(404).body(Map.of("message", "Order not found"));

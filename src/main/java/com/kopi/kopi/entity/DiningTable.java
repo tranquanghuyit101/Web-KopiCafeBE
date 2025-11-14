@@ -20,7 +20,7 @@ public class DiningTable {
     @Column(name = "number", nullable = false)
     private Integer number;
 
-    @Column(name = "name")
+    @Column(name = "name", length = 100)
     private String name;
 
     @Column(name = "status", nullable = false, length = 20)

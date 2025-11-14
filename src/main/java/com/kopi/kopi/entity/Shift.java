@@ -27,7 +27,7 @@ public class Shift {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
-    @Column(name = "description")
+    @Column(name = "description", length = 255)
     private String description;
 
     @Column(name = "is_active", nullable = false)
@@ -38,7 +38,7 @@ public class Shift {
     @ToString.Exclude
     private User createdByUser;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     @ManyToOne(fetch = FetchType.LAZY)

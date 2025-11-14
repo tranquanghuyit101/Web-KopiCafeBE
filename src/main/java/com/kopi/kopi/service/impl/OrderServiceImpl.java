@@ -61,6 +61,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> getUserTransactions(Integer userId, Integer page, Integer limit) {
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), Math.max(limit, 1), Sort.by("createdAt").descending());
         Page<OrderEntity> pageData = orderRepository.findByCustomer_UserId(userId, pageable);
@@ -123,6 +124,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<?> getTransactionDetail(Integer id, User current) {
         OrderEntity o = orderRepository.findById(id).orElseThrow();
         boolean isOwner = (o.getCustomer() != null && current != null && Objects.equals(o.getCustomer().getUserId(), current.getUserId()));
@@ -191,6 +193,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> listPending(String status, String type, Integer page, Integer limit) {
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), Math.max(limit, 1));
         Page<OrderEntity> pageData;
