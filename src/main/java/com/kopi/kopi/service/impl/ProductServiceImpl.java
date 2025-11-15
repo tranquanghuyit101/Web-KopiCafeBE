@@ -45,7 +45,6 @@ public class ProductServiceImpl implements ProductService {
     private BigDecimal computeDiscountedPrice(BigDecimal price, DiscountEvent ev) {
         if (price == null) return null;
         if (ev == null) return null;
-        if (Boolean.TRUE.equals(ev.getShippingFee())) return null; // shipping-only discount, skip price change
         BigDecimal value = ev.getDiscountValue() != null ? ev.getDiscountValue() : BigDecimal.ZERO;
         if (ev.getDiscountType() == null) return null;
         switch (ev.getDiscountType()) {

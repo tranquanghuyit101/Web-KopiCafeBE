@@ -43,9 +43,6 @@ public class DiscountEvent {
 	@Column(name = "is_active", nullable = false)
 	private Boolean active;
 
-	@Column(name = "is_shipping_fee", nullable = false)
-	private Boolean shippingFee;
-
 	@Column(name = "created_at", nullable = false)
 	private LocalDateTime createdAt;
 

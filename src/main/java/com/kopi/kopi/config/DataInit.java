@@ -577,7 +577,7 @@ public class DataInit {
 							.description("Expired 10% off")
 							.discountType(DiscountType.PERCENT)
 							.discountValue(new BigDecimal("10"))
-							.shippingFee(false)
+							// removed shippingFee for events
 							.minOrderAmount(new BigDecimal("100000"))
 							.startsAt(nowDsc.minusDays(10))
 							.endsAt(nowDsc.minusDays(3))
@@ -592,7 +592,7 @@ public class DataInit {
 							.description("Active 15,000 VND off")
 							.discountType(DiscountType.AMOUNT)
 							.discountValue(new BigDecimal("15000"))
-							.shippingFee(true)
+							// removed shippingFee for events
 							.minOrderAmount(new BigDecimal("10000"))
 							.startsAt(nowDsc.minusDays(2))
 							.endsAt(nowDsc.minusDays(2).plusDays(7))
@@ -607,7 +607,7 @@ public class DataInit {
 							.description("Upcoming 20% off")
 							.discountType(DiscountType.PERCENT)
 							.discountValue(new BigDecimal("20"))
-							.shippingFee(false)
+							// removed shippingFee for events
 							.minOrderAmount(new BigDecimal("50000"))
 							.startsAt(nowDsc.plusDays(7))
 							.endsAt(nowDsc.plusDays(14))
@@ -633,7 +633,7 @@ public class DataInit {
 							.description("Expired event discount for first 3 products")
 							.discountType(DiscountType.PERCENT)
 							.discountValue(new BigDecimal("10"))
-							.shippingFee(false)
+							// removed shippingFee for events
 							.startsAt(nowDsc.minusDays(10))
 							.endsAt(nowDsc.minusDays(3))
 							.active(true)
@@ -648,7 +648,7 @@ public class DataInit {
 							.description("Active event discount for first 3 products")
 							.discountType(DiscountType.PERCENT)
 							.discountValue(new BigDecimal("12"))
-							.shippingFee(true)
+							// removed shippingFee for events
 							.startsAt(nowDsc.minusDays(2))
 							.endsAt(nowDsc.minusDays(2).plusDays(7))
 							.active(true)
@@ -663,7 +663,7 @@ public class DataInit {
 							.description("Upcoming event discount for first 3 products")
 							.discountType(DiscountType.PERCENT)
 							.discountValue(new BigDecimal("15"))
-							.shippingFee(false)
+							// removed shippingFee for events
 							.startsAt(nowDsc.plusDays(7))
 							.endsAt(nowDsc.plusDays(14))
 							.active(true)

@@ -36,13 +36,14 @@ public class OrderServiceImpl implements OrderService {
     private final OrderDetailAddOnRepository orderDetailAddOnRepository;
     private final DiscountCodeRepository discountCodeRepository;
     private final DiscountCodeRedemptionRepository discountCodeRedemptionRepository;
+    private final DiscountEventRepository discountEventRepository;
     @PersistenceContext
     private EntityManager entityManager;
     private final MapboxService mapboxService;
     private final NotificationService notificationService;
 
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, NotificationService notificationService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountCodeRedemptionRepository discountCodeRedemptionRepository) {
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, NotificationService notificationService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountCodeRedemptionRepository discountCodeRedemptionRepository, DiscountEventRepository discountEventRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -58,6 +59,35 @@ public class OrderServiceImpl implements OrderService {
         this.discountCodeRepository = discountCodeRepository;
         this.discountCodeRedemptionRepository = discountCodeRedemptionRepository;
         this.notificationService = notificationService;
+        this.discountEventRepository = discountEventRepository;
+    }
+
+    private BigDecimal getDiscountedBasePrice(Product prod) {
+        if (prod == null) return BigDecimal.ZERO;
+        BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+        try {
+            var evOpt = discountEventRepository.findActiveEventByProductId(prod.getProductId(), java.time.LocalDateTime.now());
+            if (evOpt.isEmpty()) return base;
+            var ev = evOpt.get();
+            if (ev.getDiscountType() == null || ev.getDiscountValue() == null) return base;
+            switch (ev.getDiscountType()) {
+                case PERCENT -> {
+                    BigDecimal pct = ev.getDiscountValue();
+                    if (pct.compareTo(BigDecimal.ZERO) < 0) pct = BigDecimal.ZERO;
+                    if (pct.compareTo(new BigDecimal("100")) > 0) pct = new BigDecimal("100");
+                    BigDecimal multiplier = BigDecimal.ONE.subtract(pct.divide(new BigDecimal("100")));
+                    BigDecimal result = base.multiply(multiplier);
+                    return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+                }
+                case AMOUNT -> {
+                    BigDecimal result = base.subtract(ev.getDiscountValue());
+                    return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+                }
+                default -> { return base; }
+            }
+        } catch (Exception ignored) {
+            return base;
+        }
     }
 
     @Override
@@ -382,7 +412,7 @@ public class OrderServiceImpl implements OrderService {
             // Parse add_on_ids (array) or add_ons (array of ids or objects)
             List<Integer> addOnIds = parseAddOnIds(p.get("add_on_ids"), p.get("add_ons"));
 
-            BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+            BigDecimal base = getDiscountedBasePrice(prod);
             BigDecimal sizeDelta = BigDecimal.ZERO;
             Size sizeEntity = null;
             if (sizeId != null) {
@@ -684,7 +714,7 @@ public class OrderServiceImpl implements OrderService {
             // Compute expected unit price again to match detail when duplicates exist
             Product prod = productRepository.findById(productId).orElse(null);
             if (prod == null) continue;
-            BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+            BigDecimal base = getDiscountedBasePrice(prod);
             BigDecimal sizeDelta = BigDecimal.ZERO;
             if (sizeId != null) {
                 var ps = productSizeRepository.findByProduct_ProductIdAndSize_SizeId(productId, sizeId).orElse(null);
@@ -774,7 +804,7 @@ public class OrderServiceImpl implements OrderService {
             Integer productId = gi.product_id();
             Integer qty = gi.qty() == null ? 1 : gi.qty();
             Product prod = productRepository.findById(productId).orElseThrow();
-            BigDecimal unit = prod.getPrice();
+            BigDecimal unit = getDiscountedBasePrice(prod);
             subtotal = subtotal.add(unit.multiply(BigDecimal.valueOf(qty)));
             details.add(OrderDetail.builder()
                 .product(prod)

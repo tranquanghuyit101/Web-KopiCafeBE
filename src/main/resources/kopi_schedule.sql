@@ -238,7 +238,6 @@ CREATE TABLE dbo.discount_events (
     starts_at         DATETIME2(3)  NOT NULL,
     ends_at           DATETIME2(3)  NOT NULL,
     is_active         BIT           NOT NULL,
-    is_shipping_fee   BIT           NOT NULL,
     created_at        DATETIME2(3)  NOT NULL
 );
 
@@ -635,7 +634,6 @@ ALTER TABLE dbo.inventory_log
 
 ALTER TABLE dbo.discount_events
     ADD CONSTRAINT DF_discount_events_is_active DEFAULT (1) FOR is_active,
-        CONSTRAINT DF_discount_events_is_shipping_fee DEFAULT (0) FOR is_shipping_fee,
         CONSTRAINT DF_discount_events_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
 
 ALTER TABLE dbo.discount_codes

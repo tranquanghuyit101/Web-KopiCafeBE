@@ -200,7 +200,6 @@ public class PromoServiceImpl implements IPromoService {
         ev.setStartsAt(parseDateTime(body.getStart_date()));
         ev.setEndsAt(parseDateTime(body.getEnd_date()));
         ev.setActive(true);
-        ev.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
         ev.setCreatedAt(LocalDateTime.now());
         for (Integer pid : body.getProduct_ids()) {
             Product p = productRepository.findById(pid).orElse(null);
@@ -262,8 +261,7 @@ public class PromoServiceImpl implements IPromoService {
         dto.setDiscountValue(ev.getDiscountValue());
         dto.setStartsAt(ev.getStartsAt());
         dto.setEndsAt(ev.getEndsAt());
-        dto.setActive(ev.getActive());
-        dto.setShippingFee(ev.getShippingFee());
+            dto.setActive(ev.getActive());
         dto.setProductIds(pids);
         dto.setProducts(plist);
         return dto;
@@ -307,7 +305,6 @@ public class PromoServiceImpl implements IPromoService {
             if (body.getDiscount_value() != null) ev.setDiscountValue(parseDecimal(body.getDiscount_value(), ev.getDiscountValue()));
             if (body.getStart_date() != null) ev.setStartsAt(parseDateTime(body.getStart_date()));
             if (body.getEnd_date() != null) ev.setEndsAt(parseDateTime(body.getEnd_date()));
-            if (body.getShippingFee() != null) ev.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
             if (body.getProduct_ids() != null) {
                 ev.getProducts().clear();
                 for (Integer pid : body.getProduct_ids()) {
