@@ -501,7 +501,8 @@ public class OrderServiceImpl implements OrderService {
                 DiscountCode dc = dcOpt.get();
                 String validationError = validateDiscountCodeForUser(dc, subtotal, current);
                 if (validationError == null) {
-                    discount = computeDiscountAmount(dc, subtotal);
+                    BigDecimal discountBase = Boolean.TRUE.equals(dc.getShippingFee()) ? shippingFee : subtotal;
+                    discount = computeDiscountAmount(dc, discountBase);
                     appliedCode = dc;
                 } else {
                     return ResponseEntity.badRequest().body(Map.of("message", validationError));
@@ -571,17 +572,17 @@ public class OrderServiceImpl implements OrderService {
         return ResponseEntity.ok(Map.of("message", "OK", "data", Map.of("id", saved.getOrderId())));
     }
 
-    private BigDecimal computeDiscountAmount(DiscountCode dc, BigDecimal subtotal) {
-        if (dc == null || subtotal == null) return BigDecimal.ZERO;
+    private BigDecimal computeDiscountAmount(DiscountCode dc, BigDecimal base) {
+        if (dc == null || base == null) return BigDecimal.ZERO;
         if (dc.getDiscountType() == com.kopi.kopi.entity.enums.DiscountType.PERCENT) {
             BigDecimal percent = dc.getDiscountValue() == null ? BigDecimal.ZERO : dc.getDiscountValue();
-            BigDecimal amt = subtotal.multiply(percent).divide(new BigDecimal("100"));
-            if (amt.compareTo(subtotal) > 0) amt = subtotal;
+            BigDecimal amt = base.multiply(percent).divide(new BigDecimal("100"));
+            if (amt.compareTo(base) > 0) amt = base;
             if (amt.compareTo(BigDecimal.ZERO) < 0) amt = BigDecimal.ZERO;
             return amt;
         }
         BigDecimal val = dc.getDiscountValue() == null ? BigDecimal.ZERO : dc.getDiscountValue();
-        if (val.compareTo(subtotal) > 0) val = subtotal;
+        if (val.compareTo(base) > 0) val = base;
         if (val.compareTo(BigDecimal.ZERO) < 0) val = BigDecimal.ZERO;
         return val;
     }
@@ -611,6 +612,10 @@ public class OrderServiceImpl implements OrderService {
         if (body != null && body.get("subtotal") != null) {
             try { subtotal = new BigDecimal(String.valueOf(body.get("subtotal"))); } catch (Exception ignored) {}
         }
+        BigDecimal shipping = BigDecimal.ZERO;
+        if (body != null && body.get("shipping") != null) {
+            try { shipping = new BigDecimal(String.valueOf(body.get("shipping"))); } catch (Exception ignored) {}
+        }
         if (code == null || code.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng nhập mã giảm giá"));
         }
@@ -623,13 +628,15 @@ public class OrderServiceImpl implements OrderService {
         if (error != null) {
             return ResponseEntity.badRequest().body(Map.of("message", error));
         }
-        BigDecimal amount = computeDiscountAmount(dc, subtotal);
+        BigDecimal base = Boolean.TRUE.equals(dc.getShippingFee()) ? (shipping != null ? shipping : BigDecimal.ZERO) : subtotal;
+        BigDecimal amount = computeDiscountAmount(dc, base);
         return ResponseEntity.ok(Map.of(
                 "valid", true,
                 "discount_amount", amount,
                 "coupon_code", dc.getCode(),
                 "discount_type", dc.getDiscountType() != null ? dc.getDiscountType().name() : null,
                 "discount_value", dc.getDiscountValue(),
+                "applies_to_shipping", Boolean.TRUE.equals(dc.getShippingFee()),
                 "message", "Áp dụng mã giảm giá thành công"
         ));
     }

@@ -174,8 +174,9 @@ public class PromoServiceImpl implements IPromoService {
         dc.setStartsAt(parseDateTime(body.getStart_date()));
         dc.setEndsAt(parseDateTime(body.getEnd_date()));
         dc.setTotalUsageLimit(parseInteger(body.getTotal_usage_limit(), null));
-        dc.setPerUserLimit(null);
+        dc.setPerUserLimit(parseInteger(body.getPer_user_limit(), null));
         dc.setActive(true);
+        dc.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
         dc.setUsageCount(0);
         dc.setCreatedAt(LocalDateTime.now());
         discountCodeRepository.save(dc);
@@ -199,6 +200,7 @@ public class PromoServiceImpl implements IPromoService {
         ev.setStartsAt(parseDateTime(body.getStart_date()));
         ev.setEndsAt(parseDateTime(body.getEnd_date()));
         ev.setActive(true);
+        ev.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
         ev.setCreatedAt(LocalDateTime.now());
         for (Integer pid : body.getProduct_ids()) {
             Product p = productRepository.findById(pid).orElse(null);
@@ -227,9 +229,11 @@ public class PromoServiceImpl implements IPromoService {
             dto.setDiscountValue(dc.getDiscountValue());
             dto.setMinOrderAmount(dc.getMinOrderAmount());
             dto.setTotalUsageLimit(dc.getTotalUsageLimit());
+            dto.setPerUserLimit(dc.getPerUserLimit());
             dto.setStartsAt(dc.getStartsAt());
             dto.setEndsAt(dc.getEndsAt());
             dto.setActive(dc.getActive());
+            dto.setShippingFee(dc.getShippingFee());
             return dto;
         }
         var ev = discountEventRepository.findById(id).orElse(null);
@@ -257,6 +261,7 @@ public class PromoServiceImpl implements IPromoService {
             dto.setStartsAt(ev.getStartsAt());
             dto.setEndsAt(ev.getEndsAt());
             dto.setActive(ev.getActive());
+            dto.setShippingFee(ev.getShippingFee());
             dto.setProductIds(pids);
             dto.setProducts(plist);
             return dto;
@@ -275,8 +280,10 @@ public class PromoServiceImpl implements IPromoService {
             if (body.getDiscount_value() != null) dc.setDiscountValue(parseDecimal(body.getDiscount_value(), dc.getDiscountValue()));
             if (body.getMin_order_amount() != null) dc.setMinOrderAmount(parseDecimal(body.getMin_order_amount(), dc.getMinOrderAmount()));
             if (body.getTotal_usage_limit() != null) dc.setTotalUsageLimit(parseInteger(body.getTotal_usage_limit(), dc.getTotalUsageLimit()));
+            if (body.getPer_user_limit() != null) dc.setPerUserLimit(parseInteger(body.getPer_user_limit(), dc.getPerUserLimit()));
             if (body.getStart_date() != null) dc.setStartsAt(parseDateTime(body.getStart_date()));
             if (body.getEnd_date() != null) dc.setEndsAt(parseDateTime(body.getEnd_date()));
+            if (body.getShippingFee() != null) dc.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
             discountCodeRepository.save(dc);
             return;
         }
@@ -288,6 +295,7 @@ public class PromoServiceImpl implements IPromoService {
             if (body.getDiscount_value() != null) ev.setDiscountValue(parseDecimal(body.getDiscount_value(), ev.getDiscountValue()));
             if (body.getStart_date() != null) ev.setStartsAt(parseDateTime(body.getStart_date()));
             if (body.getEnd_date() != null) ev.setEndsAt(parseDateTime(body.getEnd_date()));
+            if (body.getShippingFee() != null) ev.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
             if (body.getProduct_ids() != null) {
                 ev.getProducts().clear();
                 for (Integer pid : body.getProduct_ids()) {

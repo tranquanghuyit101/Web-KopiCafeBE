@@ -1,5 +1,6 @@
 package com.kopi.kopi.dto.promo;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 import lombok.AllArgsConstructor;
@@ -17,6 +18,8 @@ public class CreateEventDTO {
 	private String start_date;
 	private String end_date;
 	private List<Integer> product_ids;
+	@JsonProperty("is_shipping_fee")
+	private Boolean shippingFee;
 }
 
 
