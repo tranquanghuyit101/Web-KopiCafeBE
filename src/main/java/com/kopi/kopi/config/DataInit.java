@@ -591,7 +591,7 @@ public class DataInit {
 							.description("Active 15,000 VND off")
 							.discountType(DiscountType.AMOUNT)
 							.discountValue(new BigDecimal("15000"))
-							//.minOrderAmount(new BigDecimal("50000"))
+							.minOrderAmount(new BigDecimal("10000"))
 							.startsAt(nowDsc.minusDays(2))
 							.endsAt(nowDsc.minusDays(2).plusDays(7))
 							.totalUsageLimit(500)
