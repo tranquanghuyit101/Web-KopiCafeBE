@@ -216,57 +216,57 @@ public class PromoServiceImpl implements IPromoService {
 
     @Override
     @Transactional(readOnly = true)
-    public PromoDetailDTO getOne(Integer id) {
-        var dc = discountCodeRepository.findById(id).orElse(null);
-        if (dc != null) {
-            PromoDetailDTO dto = new PromoDetailDTO();
-            dto.setId(dc.getDiscountCodeId());
-            dto.setKind("CODE");
-            dto.setTitle(dc.getCode());
-            dto.setCouponCode(dc.getCode());
-            dto.setDescription(dc.getDescription());
-            dto.setDiscountType(dc.getDiscountType() != null ? dc.getDiscountType().name() : null);
-            dto.setDiscountValue(dc.getDiscountValue());
-            dto.setMinOrderAmount(dc.getMinOrderAmount());
-            dto.setTotalUsageLimit(dc.getTotalUsageLimit());
-            dto.setPerUserLimit(dc.getPerUserLimit());
-            dto.setStartsAt(dc.getStartsAt());
-            dto.setEndsAt(dc.getEndsAt());
-            dto.setActive(dc.getActive());
-            dto.setShippingFee(dc.getShippingFee());
-            return dto;
+    public PromoDetailDTO getCodeDetail(Integer id) {
+        var dc = discountCodeRepository.findById(id).orElseThrow(NoSuchElementException::new);
+        PromoDetailDTO dto = new PromoDetailDTO();
+        dto.setId(dc.getDiscountCodeId());
+        dto.setKind("CODE");
+        dto.setTitle(dc.getCode());
+        dto.setCouponCode(dc.getCode());
+        dto.setDescription(dc.getDescription());
+        dto.setDiscountType(dc.getDiscountType() != null ? dc.getDiscountType().name() : null);
+        dto.setDiscountValue(dc.getDiscountValue());
+        dto.setMinOrderAmount(dc.getMinOrderAmount());
+        dto.setTotalUsageLimit(dc.getTotalUsageLimit());
+        dto.setPerUserLimit(dc.getPerUserLimit());
+        dto.setStartsAt(dc.getStartsAt());
+        dto.setEndsAt(dc.getEndsAt());
+        dto.setActive(dc.getActive());
+        dto.setShippingFee(dc.getShippingFee());
+        return dto;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PromoDetailDTO getEventDetail(Integer id) {
+        var ev = discountEventRepository.findById(id).orElseThrow(NoSuchElementException::new);
+        List<Integer> pids = new ArrayList<>();
+        List<PromoProductDTO> plist = new ArrayList<>();
+        for (var dep : ev.getProducts()) {
+            var p = dep.getProduct();
+            if (p == null) continue;
+            pids.add(p.getProductId());
+            plist.add(new PromoProductDTO(
+                    p.getProductId(),
+                    p.getName(),
+                    p.getPrice(),
+                    p.getCategory() != null ? p.getCategory().getName() : null
+            ));
         }
-        var ev = discountEventRepository.findById(id).orElse(null);
-        if (ev != null) {
-            List<Integer> pids = new ArrayList<>();
-            List<PromoProductDTO> plist = new ArrayList<>();
-            for (var dep : ev.getProducts()) {
-                var p = dep.getProduct();
-                if (p == null) continue;
-                pids.add(p.getProductId());
-                plist.add(new PromoProductDTO(
-                        p.getProductId(),
-                        p.getName(),
-                        p.getPrice(),
-                        p.getCategory() != null ? p.getCategory().getName() : null
-                ));
-            }
-            PromoDetailDTO dto = new PromoDetailDTO();
-            dto.setId(ev.getDiscountEventId());
-            dto.setKind("EVENT");
-            dto.setTitle(ev.getName());
-            dto.setDescription(ev.getDescription());
-            dto.setDiscountType(ev.getDiscountType() != null ? ev.getDiscountType().name() : null);
-            dto.setDiscountValue(ev.getDiscountValue());
-            dto.setStartsAt(ev.getStartsAt());
-            dto.setEndsAt(ev.getEndsAt());
-            dto.setActive(ev.getActive());
-            dto.setShippingFee(ev.getShippingFee());
-            dto.setProductIds(pids);
-            dto.setProducts(plist);
-            return dto;
-        }
-        throw new NoSuchElementException("Promo not found");
+        PromoDetailDTO dto = new PromoDetailDTO();
+        dto.setId(ev.getDiscountEventId());
+        dto.setKind("EVENT");
+        dto.setTitle(ev.getName());
+        dto.setDescription(ev.getDescription());
+        dto.setDiscountType(ev.getDiscountType() != null ? ev.getDiscountType().name() : null);
+        dto.setDiscountValue(ev.getDiscountValue());
+        dto.setStartsAt(ev.getStartsAt());
+        dto.setEndsAt(ev.getEndsAt());
+        dto.setActive(ev.getActive());
+        dto.setShippingFee(ev.getShippingFee());
+        dto.setProductIds(pids);
+        dto.setProducts(plist);
+        return dto;
     }
 
     @Override

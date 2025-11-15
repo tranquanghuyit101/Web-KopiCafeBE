@@ -69,9 +69,16 @@ public class PromoController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> getOne(@PathVariable("id") Integer id) {
+    public ResponseEntity<?> getOne(@PathVariable("id") Integer id, @RequestParam("discount_kind") String discountKind) {
         try {
-            PromoDetailDTO dto = promoService.getOne(id);
+            PromoDetailDTO dto;
+            if (discountKind != null && discountKind.equalsIgnoreCase("code")) {
+                dto = promoService.getCodeDetail(id);
+            } else if (discountKind != null && discountKind.equalsIgnoreCase("event")) {
+                dto = promoService.getEventDetail(id);
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("message", "discount_kind must be 'code' or 'event'"));
+            }
             return ResponseEntity.ok(dto);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
