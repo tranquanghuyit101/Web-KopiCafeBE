@@ -52,9 +52,9 @@ public class NotificationServiceImpl implements NotificationService {
         
         User customer = order.getCustomer();
         String statusMessage = getStatusMessage(newStatus);
-        String title = "Cập nhật trạng thái đơn hàng #" + order.getOrderCode();
+        String title = "Order Status Update #" + order.getOrderCode();
         String message = String.format(
-            "Đơn hàng của bạn (Mã: %s) đã được cập nhật trạng thái từ '%s' sang '%s'. %s",
+            "Your order (Code: %s) has been updated from '%s' to '%s'. %s",
             order.getOrderCode(),
             getStatusDisplayName(previousStatus),
             getStatusDisplayName(newStatus),
@@ -77,7 +77,7 @@ public class NotificationServiceImpl implements NotificationService {
         sendEmailSafely(
             customer.getEmail(),
             title,
-            message + "\n\nCảm ơn bạn đã sử dụng dịch vụ của chúng tôi!"
+            message + "\n\nThank you for using our service!"
         );
     }
     
@@ -95,17 +95,17 @@ public class NotificationServiceImpl implements NotificationService {
         
         String customerName = order.getCustomer() != null 
             ? order.getCustomer().getFullName() 
-            : "Khách hàng";
+            : "Customer";
         String orderInfo = String.format(
-            "Đơn hàng #%s của %s (ID: %d)",
+            "Order #%s of %s (ID: %d)",
             order.getOrderCode(),
             customerName,
             order.getOrderId()
         );
         
-        String title = "Cập nhật trạng thái đơn hàng";
+        String title = "Order Status Update";
         String message = String.format(
-            "%s đã thay đổi trạng thái từ '%s' sang '%s'.",
+            "%s has changed status from '%s' to '%s'.",
             orderInfo,
             getStatusDisplayName(previousStatus),
             getStatusDisplayName(newStatus)
@@ -134,7 +134,7 @@ public class NotificationServiceImpl implements NotificationService {
             sendEmailSafely(
                 staff.getEmail(),
                 title,
-                message + "\n\nVui lòng kiểm tra hệ thống để xem chi tiết."
+                message + "\n\nPlease check the system for more details."
             );
         }
     }
@@ -191,16 +191,16 @@ public class NotificationServiceImpl implements NotificationService {
     }
     
     private String getStatusDisplayName(String status) {
-        if (status == null) return "Không xác định";
+        if (status == null) return "Unknown";
         return switch (status.toUpperCase()) {
-            case "PENDING" -> "Đang chờ";
-            case "ACCEPTED" -> "Đã chấp nhận";
-            case "REJECTED" -> "Đã từ chối";
-            case "READY" -> "Sẵn sàng";
-            case "SHIPPING" -> "Đang giao hàng";
-            case "COMPLETED" -> "Hoàn thành";
-            case "CANCELLED" -> "Đã hủy";
-            case "PAID" -> "Đã thanh toán";
+            case "PENDING" -> "Pending";
+            case "ACCEPTED" -> "Accepted";
+            case "REJECTED" -> "Rejected";
+            case "READY" -> "Ready";
+            case "SHIPPING" -> "Shipping";
+            case "COMPLETED" -> "Completed";
+            case "CANCELLED" -> "Cancelled";
+            case "PAID" -> "Paid";
             default -> status;
         };
     }
@@ -208,12 +208,12 @@ public class NotificationServiceImpl implements NotificationService {
     private String getStatusMessage(String status) {
         if (status == null) return "";
         return switch (status.toUpperCase()) {
-            case "ACCEPTED" -> "Đơn hàng của bạn đã được chấp nhận và đang được xử lý.";
-            case "REJECTED" -> "Rất tiếc, đơn hàng của bạn đã bị từ chối. Vui lòng liên hệ với chúng tôi để biết thêm chi tiết.";
-            case "READY" -> "Đơn hàng của bạn đã sẵn sàng để nhận.";
-            case "SHIPPING" -> "Đơn hàng của bạn đang được giao đến bạn.";
-            case "COMPLETED" -> "Đơn hàng của bạn đã hoàn thành. Cảm ơn bạn đã sử dụng dịch vụ!";
-            case "CANCELLED" -> "Đơn hàng của bạn đã bị hủy.";
+            case "ACCEPTED" -> "Your order has been accepted and is being processed.";
+            case "REJECTED" -> "Unfortunately, your order has been rejected. Please contact us for more details.";
+            case "READY" -> "Your order is ready for pickup.";
+            case "SHIPPING" -> "Your order is out for delivery.";
+            case "COMPLETED" -> "Your order has been completed. Thank you for using our service!";
+            case "CANCELLED" -> "Your order has been cancelled.";
             default -> "";
         };
     }
