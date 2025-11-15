@@ -12,6 +12,7 @@ import com.kopi.kopi.dto.promo.CreateCodeDTO;
 import com.kopi.kopi.dto.promo.CreateEventDTO;
 import com.kopi.kopi.dto.promo.UpdatePromoDTO;
 import com.kopi.kopi.dto.promo.PromoDetailDTO;
+import com.kopi.kopi.exception.ValidationException;
 
 @RestController
 @RequestMapping("/apiv1/promo")
@@ -41,6 +42,11 @@ public class PromoController {
         try {
             promoService.createEvent(body);
             return ResponseEntity.ok(Map.of("message", "created"));
+        } catch (ValidationException ve) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "message", ve.getMessage(),
+                "invalid_products", ve.getInvalidProducts()
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
@@ -87,14 +93,27 @@ public class PromoController {
 
     @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> update(@PathVariable("id") Integer id, @RequestBody UpdatePromoDTO body) {
+    public ResponseEntity<?> update(
+            @PathVariable("id") Integer id,
+            @RequestParam("discount_kind") String discountKind,
+            @RequestBody UpdatePromoDTO body
+    ) {
         try {
-            promoService.update(id, body);
+            if (discountKind != null && discountKind.equalsIgnoreCase("code")) {
+                promoService.updateCode(id, body);
+            } else if (discountKind != null && discountKind.equalsIgnoreCase("event")) {
+                promoService.updateEvent(id, body);
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("message", "discount_kind must be 'code' or 'event'"));
+            }
             return ResponseEntity.ok(Map.of("message", "updated"));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (IllegalStateException e) {
+            // e.g. attempting to edit a discount that is not upcoming
+            return ResponseEntity.status(409).body(Map.of("message", e.getMessage()));
         }
     }
 

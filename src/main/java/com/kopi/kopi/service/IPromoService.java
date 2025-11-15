@@ -15,7 +15,8 @@ public interface IPromoService {
     DiscountEvent createEvent(CreateEventDTO body);
     PromoDetailDTO getCodeDetail(Integer id);
     PromoDetailDTO getEventDetail(Integer id);
-    void update(Integer id, UpdatePromoDTO body);
+    void updateCode(Integer id, UpdatePromoDTO body);
+    void updateEvent(Integer id, UpdatePromoDTO body);
     void softDelete(Integer id);
 }
 
