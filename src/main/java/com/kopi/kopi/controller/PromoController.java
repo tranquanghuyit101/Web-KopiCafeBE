@@ -69,9 +69,9 @@ public class PromoController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> getOne(@PathVariable("id") Integer id, @RequestParam(name = "kind", required = false) String kind) {
+    public ResponseEntity<?> getOne(@PathVariable("id") Integer id) {
         try {
-            PromoDetailDTO dto = promoService.getOne(id, kind);
+            PromoDetailDTO dto = promoService.getOne(id);
             return ResponseEntity.ok(dto);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
