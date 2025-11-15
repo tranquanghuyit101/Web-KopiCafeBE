@@ -5,6 +5,7 @@ import com.kopi.kopi.entity.Position;
 import com.kopi.kopi.repository.PositionRepository;
 import com.kopi.kopi.service.PositionService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -18,6 +19,7 @@ public class PositionServiceImpl implements PositionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<PositionDto> listPositions() {
         List<Position> all = positionRepository.findByIsActiveTrue();
         return all.stream().map(p -> new PositionDto(p.getPositionId(), p.getPositionName()))

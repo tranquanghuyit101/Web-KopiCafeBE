@@ -9,6 +9,7 @@ import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.*;
@@ -28,6 +29,7 @@ public class ReportServiceImpl implements ReportService {
     private EntityManager em;
 
     @Override
+    @Transactional(readOnly = true)
     public List<RevenuePoint> revenue(Granularity g, LocalDate from, LocalDate to, int buckets) {
         if (to == null) to = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
         if (from == null) {
@@ -132,6 +134,7 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public byte[] exportRevenueToExcel(Granularity g, LocalDate from, LocalDate to, int buckets) {
         var points = revenue(g, from, to, buckets);
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
@@ -179,6 +182,7 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public DashboardSummary summary() {
         var zone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
         var today = java.time.LocalDate.now(zone);

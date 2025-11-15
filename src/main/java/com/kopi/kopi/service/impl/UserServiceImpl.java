@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -63,6 +64,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @PreAuthorize("permitAll()")
+    @Transactional
     public void resetPassword(String email) {
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) return;
@@ -91,6 +93,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @PreAuthorize("permitAll()")
+    @Transactional
     public void changePassword(String email, String newPassword) {
         User user = userRepository.findByEmail(email).orElseThrow();
         user.setPasswordHash(passwordEncoder.encode(newPassword));
@@ -111,6 +114,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<com.kopi.kopi.dto.EmployeeSimpleDto> listEmployees() {
         // return users whose role_id == 2, excluding BANNED
         java.util.List<User> users = userRepository.findByRoleRoleIdAndStatusNot(2, UserStatus.BANNED);
@@ -124,6 +128,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public java.util.List<com.kopi.kopi.dto.EmployeeSimpleDto> searchEmployees(String positionName, String phone,
             String email, String fullName) {
         // build dynamic specification to filter employees (role_id == 2)
@@ -165,6 +170,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public com.kopi.kopi.dto.EmployeeDetailDto getEmployeeDetail(Integer userId) {
         User user = userRepository.findById(userId).orElseThrow();
         AddressHome addr = addressHomeRepository.findTopByUserUserIdOrderByCreatedAtDesc(userId).orElse(null);
@@ -183,6 +189,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional
     public void updateEmployee(Integer userId, com.kopi.kopi.dto.UpdateEmployeeRequest req) {
         User user = userRepository.findById(userId).orElseThrow();
 
@@ -237,6 +244,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional
     public void banUser(Integer userId) {
         User user = userRepository.findById(userId).orElseThrow();
         user.setStatus(com.kopi.kopi.entity.enums.UserStatus.BANNED);
@@ -244,6 +252,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional
     public void demoteEmployeeToCustomer(Integer userId) {
         User user = userRepository.findById(userId).orElseThrow();
         // fetch role with id 3 (customer)
@@ -258,6 +267,7 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public org.springframework.data.domain.Page<com.kopi.kopi.dto.CustomerListDto> listCustomers(int page, int size,
             String fullName,
             String phone,

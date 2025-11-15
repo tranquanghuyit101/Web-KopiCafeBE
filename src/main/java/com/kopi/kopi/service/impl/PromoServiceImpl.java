@@ -6,6 +6,7 @@ import com.kopi.kopi.repository.DiscountCodeRepository;
 import com.kopi.kopi.repository.DiscountEventRepository;
 import com.kopi.kopi.service.IPromoService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -21,6 +22,7 @@ public class PromoServiceImpl implements IPromoService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> list(Integer page, Integer limit, String available, String status, String searchByName) {
         LocalDateTime now = LocalDateTime.now();
         boolean hasStatus = status != null && !status.isBlank();
