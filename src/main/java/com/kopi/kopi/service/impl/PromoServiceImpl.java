@@ -274,6 +274,12 @@ public class PromoServiceImpl implements IPromoService {
     public void update(Integer id, UpdatePromoDTO body) {
         var dc = discountCodeRepository.findById(id).orElse(null);
         if (dc != null) {
+            // Only allow editing upcoming and active discount codes
+            LocalDateTime now = LocalDateTime.now();
+            boolean canModify = Boolean.TRUE.equals(dc.getActive()) && dc.getStartsAt() != null && dc.getStartsAt().isAfter(now);
+            if (!canModify) {
+                throw new IllegalStateException("Only upcoming discounts can be edited");
+            }
             if (body.getCoupon_code() != null && !body.getCoupon_code().isBlank()) dc.setCode(body.getCoupon_code().trim().toUpperCase());
             if (body.getDesc() != null) dc.setDescription(body.getDesc());
             if (body.getDiscount_type() != null) dc.setDiscountType(parseDiscountType(body.getDiscount_type()));
@@ -289,6 +295,12 @@ public class PromoServiceImpl implements IPromoService {
         }
         var ev = discountEventRepository.findById(id).orElse(null);
         if (ev != null) {
+            // Only allow editing upcoming and active discount events
+            LocalDateTime now = LocalDateTime.now();
+            boolean canModify = Boolean.TRUE.equals(ev.getActive()) && ev.getStartsAt() != null && ev.getStartsAt().isAfter(now);
+            if (!canModify) {
+                throw new IllegalStateException("Only upcoming discounts can be edited");
+            }
             if (body.getName() != null) ev.setName(body.getName());
             if (body.getDesc() != null) ev.setDescription(body.getDesc());
             if (body.getDiscount_type() != null) ev.setDiscountType(parseDiscountType(body.getDiscount_type()));
@@ -318,12 +330,24 @@ public class PromoServiceImpl implements IPromoService {
     public void softDelete(Integer id) {
         var dc = discountCodeRepository.findById(id).orElse(null);
         if (dc != null) {
+            // Only allow deleting upcoming and active discount codes
+            LocalDateTime now = LocalDateTime.now();
+            boolean canDelete = Boolean.TRUE.equals(dc.getActive()) && dc.getStartsAt() != null && dc.getStartsAt().isAfter(now);
+            if (!canDelete) {
+                throw new IllegalStateException("Only upcoming discounts can be deleted");
+            }
             dc.setActive(false);
             discountCodeRepository.save(dc);
             return;
         }
         var ev = discountEventRepository.findById(id).orElse(null);
         if (ev != null) {
+            // Only allow deleting upcoming and active discount events
+            LocalDateTime now = LocalDateTime.now();
+            boolean canDelete = Boolean.TRUE.equals(ev.getActive()) && ev.getStartsAt() != null && ev.getStartsAt().isAfter(now);
+            if (!canDelete) {
+                throw new IllegalStateException("Only upcoming discounts can be deleted");
+            }
             ev.setActive(false);
             discountEventRepository.save(ev);
             return;
