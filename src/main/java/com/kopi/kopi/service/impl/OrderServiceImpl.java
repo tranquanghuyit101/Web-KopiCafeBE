@@ -224,8 +224,10 @@ public class OrderServiceImpl implements OrderService {
             List<Map<String, Object>> products = new ArrayList<>();
             if (o.getOrderDetails() != null) {
                 for (OrderDetail d : o.getOrderDetails()) {
+                    Product prod = d.getProduct();
                     Map<String, Object> pd = new HashMap<>();
                     pd.put("product_name", d.getProductNameSnapshot());
+                    pd.put("product_img", prod != null ? prod.getImgUrl() : null);
                     pd.put("qty", d.getQuantity());
                     pd.put("subtotal", defaultBigDecimal(d.getLineTotal()));
                     pd.put("size", d.getSize() != null ? d.getSize().getName() : null);
