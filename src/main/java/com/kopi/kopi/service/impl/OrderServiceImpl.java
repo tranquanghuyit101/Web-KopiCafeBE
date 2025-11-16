@@ -36,13 +36,14 @@ public class OrderServiceImpl implements OrderService {
     private final OrderDetailAddOnRepository orderDetailAddOnRepository;
     private final DiscountCodeRepository discountCodeRepository;
     private final DiscountCodeRedemptionRepository discountCodeRedemptionRepository;
+    private final DiscountEventRepository discountEventRepository;
     @PersistenceContext
     private EntityManager entityManager;
     private final MapboxService mapboxService;
     private final NotificationService notificationService;
 
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, NotificationService notificationService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountCodeRedemptionRepository discountCodeRedemptionRepository) {
+    public OrderServiceImpl(OrderRepository orderRepository, ProductRepository productRepository, AddressRepository addressRepository, UserRepository userRepository, TableService tableService, DiningTableRepository diningTableRepository, UserAddressRepository userAddressRepository, MapboxService mapboxService, NotificationService notificationService, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, SizeRepository sizeRepository, OrderDetailAddOnRepository orderDetailAddOnRepository, DiscountCodeRepository discountCodeRepository, DiscountCodeRedemptionRepository discountCodeRedemptionRepository, DiscountEventRepository discountEventRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.addressRepository = addressRepository;
@@ -58,6 +59,35 @@ public class OrderServiceImpl implements OrderService {
         this.discountCodeRepository = discountCodeRepository;
         this.discountCodeRedemptionRepository = discountCodeRedemptionRepository;
         this.notificationService = notificationService;
+        this.discountEventRepository = discountEventRepository;
+    }
+
+    private BigDecimal getDiscountedBasePrice(Product prod) {
+        if (prod == null) return BigDecimal.ZERO;
+        BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+        try {
+            var evOpt = discountEventRepository.findActiveEventByProductId(prod.getProductId(), java.time.LocalDateTime.now());
+            if (evOpt.isEmpty()) return base;
+            var ev = evOpt.get();
+            if (ev.getDiscountType() == null || ev.getDiscountValue() == null) return base;
+            switch (ev.getDiscountType()) {
+                case PERCENT -> {
+                    BigDecimal pct = ev.getDiscountValue();
+                    if (pct.compareTo(BigDecimal.ZERO) < 0) pct = BigDecimal.ZERO;
+                    if (pct.compareTo(new BigDecimal("100")) > 0) pct = new BigDecimal("100");
+                    BigDecimal multiplier = BigDecimal.ONE.subtract(pct.divide(new BigDecimal("100")));
+                    BigDecimal result = base.multiply(multiplier);
+                    return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+                }
+                case AMOUNT -> {
+                    BigDecimal result = base.subtract(ev.getDiscountValue());
+                    return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+                }
+                default -> { return base; }
+            }
+        } catch (Exception ignored) {
+            return base;
+        }
     }
 
     @Override
@@ -224,8 +254,10 @@ public class OrderServiceImpl implements OrderService {
             List<Map<String, Object>> products = new ArrayList<>();
             if (o.getOrderDetails() != null) {
                 for (OrderDetail d : o.getOrderDetails()) {
+                    Product prod = d.getProduct();
                     Map<String, Object> pd = new HashMap<>();
                     pd.put("product_name", d.getProductNameSnapshot());
+                    pd.put("product_img", prod != null ? prod.getImgUrl() : null);
                     pd.put("qty", d.getQuantity());
                     pd.put("subtotal", defaultBigDecimal(d.getLineTotal()));
                     pd.put("size", d.getSize() != null ? d.getSize().getName() : null);
@@ -380,7 +412,7 @@ public class OrderServiceImpl implements OrderService {
             // Parse add_on_ids (array) or add_ons (array of ids or objects)
             List<Integer> addOnIds = parseAddOnIds(p.get("add_on_ids"), p.get("add_ons"));
 
-            BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+            BigDecimal base = getDiscountedBasePrice(prod);
             BigDecimal sizeDelta = BigDecimal.ZERO;
             Size sizeEntity = null;
             if (sizeId != null) {
@@ -499,7 +531,8 @@ public class OrderServiceImpl implements OrderService {
                 DiscountCode dc = dcOpt.get();
                 String validationError = validateDiscountCodeForUser(dc, subtotal, current);
                 if (validationError == null) {
-                    discount = computeDiscountAmount(dc, subtotal);
+                    BigDecimal discountBase = Boolean.TRUE.equals(dc.getShippingFee()) ? shippingFee : subtotal;
+                    discount = computeDiscountAmount(dc, discountBase);
                     appliedCode = dc;
                 } else {
                     return ResponseEntity.badRequest().body(Map.of("message", validationError));
@@ -569,17 +602,17 @@ public class OrderServiceImpl implements OrderService {
         return ResponseEntity.ok(Map.of("message", "OK", "data", Map.of("id", saved.getOrderId())));
     }
 
-    private BigDecimal computeDiscountAmount(DiscountCode dc, BigDecimal subtotal) {
-        if (dc == null || subtotal == null) return BigDecimal.ZERO;
+    private BigDecimal computeDiscountAmount(DiscountCode dc, BigDecimal base) {
+        if (dc == null || base == null) return BigDecimal.ZERO;
         if (dc.getDiscountType() == com.kopi.kopi.entity.enums.DiscountType.PERCENT) {
             BigDecimal percent = dc.getDiscountValue() == null ? BigDecimal.ZERO : dc.getDiscountValue();
-            BigDecimal amt = subtotal.multiply(percent).divide(new BigDecimal("100"));
-            if (amt.compareTo(subtotal) > 0) amt = subtotal;
+            BigDecimal amt = base.multiply(percent).divide(new BigDecimal("100"));
+            if (amt.compareTo(base) > 0) amt = base;
             if (amt.compareTo(BigDecimal.ZERO) < 0) amt = BigDecimal.ZERO;
             return amt;
         }
         BigDecimal val = dc.getDiscountValue() == null ? BigDecimal.ZERO : dc.getDiscountValue();
-        if (val.compareTo(subtotal) > 0) val = subtotal;
+        if (val.compareTo(base) > 0) val = base;
         if (val.compareTo(BigDecimal.ZERO) < 0) val = BigDecimal.ZERO;
         return val;
     }
@@ -609,6 +642,10 @@ public class OrderServiceImpl implements OrderService {
         if (body != null && body.get("subtotal") != null) {
             try { subtotal = new BigDecimal(String.valueOf(body.get("subtotal"))); } catch (Exception ignored) {}
         }
+        BigDecimal shipping = BigDecimal.ZERO;
+        if (body != null && body.get("shipping") != null) {
+            try { shipping = new BigDecimal(String.valueOf(body.get("shipping"))); } catch (Exception ignored) {}
+        }
         if (code == null || code.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng nhập mã giảm giá"));
         }
@@ -621,13 +658,15 @@ public class OrderServiceImpl implements OrderService {
         if (error != null) {
             return ResponseEntity.badRequest().body(Map.of("message", error));
         }
-        BigDecimal amount = computeDiscountAmount(dc, subtotal);
+        BigDecimal base = Boolean.TRUE.equals(dc.getShippingFee()) ? (shipping != null ? shipping : BigDecimal.ZERO) : subtotal;
+        BigDecimal amount = computeDiscountAmount(dc, base);
         return ResponseEntity.ok(Map.of(
                 "valid", true,
                 "discount_amount", amount,
                 "coupon_code", dc.getCode(),
                 "discount_type", dc.getDiscountType() != null ? dc.getDiscountType().name() : null,
                 "discount_value", dc.getDiscountValue(),
+                "applies_to_shipping", Boolean.TRUE.equals(dc.getShippingFee()),
                 "message", "Áp dụng mã giảm giá thành công"
         ));
     }
@@ -675,7 +714,7 @@ public class OrderServiceImpl implements OrderService {
             // Compute expected unit price again to match detail when duplicates exist
             Product prod = productRepository.findById(productId).orElse(null);
             if (prod == null) continue;
-            BigDecimal base = prod.getPrice() != null ? prod.getPrice() : BigDecimal.ZERO;
+            BigDecimal base = getDiscountedBasePrice(prod);
             BigDecimal sizeDelta = BigDecimal.ZERO;
             if (sizeId != null) {
                 var ps = productSizeRepository.findByProduct_ProductIdAndSize_SizeId(productId, sizeId).orElse(null);
@@ -765,7 +804,7 @@ public class OrderServiceImpl implements OrderService {
             Integer productId = gi.product_id();
             Integer qty = gi.qty() == null ? 1 : gi.qty();
             Product prod = productRepository.findById(productId).orElseThrow();
-            BigDecimal unit = prod.getPrice();
+            BigDecimal unit = getDiscountedBasePrice(prod);
             subtotal = subtotal.add(unit.multiply(BigDecimal.valueOf(qty)));
             details.add(OrderDetail.builder()
                 .product(prod)

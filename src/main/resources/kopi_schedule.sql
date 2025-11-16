@@ -261,6 +261,7 @@ CREATE TABLE dbo.discount_codes (
     total_usage_limit INT           NULL,
     per_user_limit    INT           NULL,
     is_active        BIT            NOT NULL,
+    is_shipping_fee  BIT            NOT NULL,
     usage_count       INT            NOT NULL,
     created_at       DATETIME2(3)   NOT NULL
 );
@@ -637,6 +638,7 @@ ALTER TABLE dbo.discount_events
 
 ALTER TABLE dbo.discount_codes
     ADD CONSTRAINT DF_discount_codes_is_active DEFAULT (1) FOR is_active,
+        CONSTRAINT DF_discount_codes_is_shipping_fee DEFAULT (0) FOR is_shipping_fee,
         CONSTRAINT DF_discount_codes_created_at DEFAULT SYSUTCDATETIME() FOR created_at,
         CONSTRAINT DF_discount_codes_usage_count DEFAULT (0) FOR usage_count;
 

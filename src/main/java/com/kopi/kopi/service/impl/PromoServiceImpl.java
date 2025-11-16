@@ -2,23 +2,42 @@ package com.kopi.kopi.service.impl;
 
 import com.kopi.kopi.entity.DiscountCode;
 import com.kopi.kopi.entity.DiscountEvent;
+import com.kopi.kopi.entity.DiscountEventProduct;
+import com.kopi.kopi.entity.Product;
+import com.kopi.kopi.entity.enums.DiscountType;
 import com.kopi.kopi.repository.DiscountCodeRepository;
 import com.kopi.kopi.repository.DiscountEventRepository;
+import com.kopi.kopi.repository.ProductRepository;
 import com.kopi.kopi.service.IPromoService;
+import com.kopi.kopi.exception.ValidationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+
+import com.kopi.kopi.dto.promo.CreateCodeDTO;
+import com.kopi.kopi.dto.promo.CreateEventDTO;
+import com.kopi.kopi.dto.promo.UpdatePromoDTO;
+import com.kopi.kopi.dto.promo.PromoDetailDTO;
+import com.kopi.kopi.dto.promo.PromoProductDTO;
 
 @Service
 public class PromoServiceImpl implements IPromoService {
     private final DiscountCodeRepository discountCodeRepository;
     private final DiscountEventRepository discountEventRepository;
+    private final ProductRepository productRepository;
 
-    public PromoServiceImpl(DiscountCodeRepository discountCodeRepository, DiscountEventRepository discountEventRepository) {
+    public PromoServiceImpl(DiscountCodeRepository discountCodeRepository, DiscountEventRepository discountEventRepository, ProductRepository productRepository) {
         this.discountCodeRepository = discountCodeRepository;
         this.discountEventRepository = discountEventRepository;
+        this.productRepository = productRepository;
     }
 
     @Override
@@ -130,6 +149,266 @@ public class PromoServiceImpl implements IPromoService {
                 "data", pageItems,
                 "meta", meta
         );
+    }
+
+    @Override
+    @Transactional
+    public DiscountCode create(CreateCodeDTO body) {
+        if (body == null || body.getCoupon_code() == null || body.getCoupon_code().isBlank()) {
+            throw new IllegalArgumentException("coupon_code is required");
+        }
+        if (discountCodeRepository.findByCodeIgnoreCase(body.getCoupon_code().trim()).isPresent()) {
+            throw new IllegalStateException("coupon_code already exists");
+        }
+        DiscountCode dc = new DiscountCode();
+        dc.setCode(body.getCoupon_code().trim().toUpperCase());
+        dc.setDescription(body.getDesc());
+        DiscountType type = parseDiscountType(body.getDiscount_type());
+        BigDecimal value = parseDecimal(body.getDiscount_value(), null);
+        if (value == null && body.getDiscount() != null && !body.getDiscount().isBlank()) {
+            type = DiscountType.PERCENT;
+            value = parseDecimal(body.getDiscount(), BigDecimal.ZERO);
+        }
+        dc.setDiscountType(type);
+        dc.setDiscountValue(value != null ? value : BigDecimal.ZERO);
+        dc.setMinOrderAmount(parseDecimal(body.getMin_order_amount(), null));
+        dc.setStartsAt(parseDateTime(body.getStart_date()));
+        dc.setEndsAt(parseDateTime(body.getEnd_date()));
+        dc.setTotalUsageLimit(parseInteger(body.getTotal_usage_limit(), null));
+        dc.setPerUserLimit(parseInteger(body.getPer_user_limit(), null));
+        dc.setActive(true);
+        dc.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
+        dc.setUsageCount(0);
+        dc.setCreatedAt(LocalDateTime.now());
+        discountCodeRepository.save(dc);
+        return dc;
+    }
+
+    @Override
+    @Transactional
+    public DiscountEvent createEvent(CreateEventDTO body) {
+        if (body == null || body.getName() == null || body.getName().isBlank()) {
+            throw new IllegalArgumentException("name is required");
+        }
+        if (body.getProduct_ids() == null || body.getProduct_ids().isEmpty()) {
+            throw new IllegalArgumentException("product_ids required");
+        }
+        // Parse proposed time window first to validate overlap correctly
+        LocalDateTime proposedStart = parseDateTime(body.getStart_date());
+        LocalDateTime proposedEnd = parseDateTime(body.getEnd_date());
+        // Validate: each product must not belong to another active event overlapping the proposed window
+        List<Map<String, Object>> invalids = new ArrayList<>();
+        for (Integer pid : body.getProduct_ids()) {
+            if (pid == null) continue;
+            Optional<DiscountEvent> evOpt;
+            evOpt = discountEventRepository.findActiveOverlappingEventByProductId(pid, proposedStart, proposedEnd);
+            if (evOpt.isPresent()) {
+                Product p = productRepository.findById(pid).orElse(null);
+                var ev = evOpt.get();
+                invalids.add(Map.of(
+                        "product_id", pid,
+                        "product_name", p != null ? p.getName() : null,
+                        "event_id", ev.getDiscountEventId(),
+                        "event_name", ev.getName()
+                ));
+            }
+        }
+        if (!invalids.isEmpty()) {
+            throw new ValidationException("Some products already belong to active discount events", invalids);
+        }
+        DiscountEvent ev = new DiscountEvent();
+        ev.setName(body.getName());
+        ev.setDescription(body.getDesc());
+        ev.setDiscountType(parseDiscountType(body.getDiscount_type()));
+        ev.setDiscountValue(parseDecimal(body.getDiscount_value(), BigDecimal.ZERO));
+        ev.setStartsAt(proposedStart);
+        ev.setEndsAt(proposedEnd);
+        ev.setActive(true);
+        ev.setCreatedAt(LocalDateTime.now());
+        for (Integer pid : body.getProduct_ids()) {
+            Product p = productRepository.findById(pid).orElse(null);
+            if (p == null) continue;
+            DiscountEventProduct dep = new DiscountEventProduct();
+            dep.setDiscountEvent(ev);
+            dep.setProduct(p);
+            ev.getProducts().add(dep);
+        }
+        discountEventRepository.save(ev);
+        return ev;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PromoDetailDTO getCodeDetail(Integer id) {
+        var dc = discountCodeRepository.findById(id).orElseThrow(NoSuchElementException::new);
+        PromoDetailDTO dto = new PromoDetailDTO();
+        dto.setId(dc.getDiscountCodeId());
+        dto.setKind("CODE");
+        dto.setTitle(dc.getCode());
+        dto.setCouponCode(dc.getCode());
+        dto.setDescription(dc.getDescription());
+        dto.setDiscountType(dc.getDiscountType() != null ? dc.getDiscountType().name() : null);
+        dto.setDiscountValue(dc.getDiscountValue());
+        dto.setMinOrderAmount(dc.getMinOrderAmount());
+        dto.setTotalUsageLimit(dc.getTotalUsageLimit());
+        dto.setPerUserLimit(dc.getPerUserLimit());
+        dto.setStartsAt(dc.getStartsAt());
+        dto.setEndsAt(dc.getEndsAt());
+        dto.setActive(dc.getActive());
+        dto.setShippingFee(dc.getShippingFee());
+        return dto;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PromoDetailDTO getEventDetail(Integer id) {
+        var ev = discountEventRepository.findById(id).orElseThrow(NoSuchElementException::new);
+        List<Integer> pids = new ArrayList<>();
+        List<PromoProductDTO> plist = new ArrayList<>();
+        for (var dep : ev.getProducts()) {
+            var p = dep.getProduct();
+            if (p == null) continue;
+            pids.add(p.getProductId());
+            plist.add(new PromoProductDTO(
+                    p.getProductId(),
+                    p.getName(),
+                    p.getPrice(),
+                    p.getCategory() != null ? p.getCategory().getName() : null
+            ));
+        }
+        PromoDetailDTO dto = new PromoDetailDTO();
+        dto.setId(ev.getDiscountEventId());
+        dto.setKind("EVENT");
+        dto.setTitle(ev.getName());
+        dto.setDescription(ev.getDescription());
+        dto.setDiscountType(ev.getDiscountType() != null ? ev.getDiscountType().name() : null);
+        dto.setDiscountValue(ev.getDiscountValue());
+        dto.setStartsAt(ev.getStartsAt());
+        dto.setEndsAt(ev.getEndsAt());
+            dto.setActive(ev.getActive());
+        dto.setProductIds(pids);
+        dto.setProducts(plist);
+        return dto;
+    }
+
+    @Override
+    @Transactional
+    public void updateCode(Integer id, UpdatePromoDTO body) {
+        var dc = discountCodeRepository.findById(id).orElseThrow(NoSuchElementException::new);
+        // Only allow editing upcoming and active discount codes
+        LocalDateTime now = LocalDateTime.now();
+        boolean canModify = Boolean.TRUE.equals(dc.getActive()) && dc.getStartsAt() != null && dc.getStartsAt().isAfter(now);
+        if (!canModify) {
+            throw new IllegalStateException("Only upcoming discounts can be edited");
+        }
+        if (body.getCoupon_code() != null && !body.getCoupon_code().isBlank()) dc.setCode(body.getCoupon_code().trim().toUpperCase());
+        if (body.getDesc() != null) dc.setDescription(body.getDesc());
+        if (body.getDiscount_type() != null) dc.setDiscountType(parseDiscountType(body.getDiscount_type()));
+        if (body.getDiscount_value() != null) dc.setDiscountValue(parseDecimal(body.getDiscount_value(), dc.getDiscountValue()));
+        if (body.getMin_order_amount() != null) dc.setMinOrderAmount(parseDecimal(body.getMin_order_amount(), dc.getMinOrderAmount()));
+        if (body.getTotal_usage_limit() != null) dc.setTotalUsageLimit(parseInteger(body.getTotal_usage_limit(), dc.getTotalUsageLimit()));
+        if (body.getPer_user_limit() != null) dc.setPerUserLimit(parseInteger(body.getPer_user_limit(), dc.getPerUserLimit()));
+        if (body.getStart_date() != null) dc.setStartsAt(parseDateTime(body.getStart_date()));
+        if (body.getEnd_date() != null) dc.setEndsAt(parseDateTime(body.getEnd_date()));
+        if (body.getShippingFee() != null) dc.setShippingFee(Boolean.TRUE.equals(body.getShippingFee()));
+        discountCodeRepository.save(dc);
+    }
+
+    @Override
+    @Transactional
+    public void updateEvent(Integer id, UpdatePromoDTO body) {
+        var ev = discountEventRepository.findById(id).orElseThrow(NoSuchElementException::new);
+        // Only allow editing upcoming and active discount events
+        LocalDateTime now = LocalDateTime.now();
+        boolean canModify = Boolean.TRUE.equals(ev.getActive()) && ev.getStartsAt() != null && ev.getStartsAt().isAfter(now);
+        if (!canModify) {
+            throw new IllegalStateException("Only upcoming discounts can be edited");
+        }
+        if (body.getName() != null) ev.setName(body.getName());
+        if (body.getDesc() != null) ev.setDescription(body.getDesc());
+        if (body.getDiscount_type() != null) ev.setDiscountType(parseDiscountType(body.getDiscount_type()));
+        if (body.getDiscount_value() != null) ev.setDiscountValue(parseDecimal(body.getDiscount_value(), ev.getDiscountValue()));
+        if (body.getStart_date() != null) ev.setStartsAt(parseDateTime(body.getStart_date()));
+        if (body.getEnd_date() != null) ev.setEndsAt(parseDateTime(body.getEnd_date()));
+        if (body.getProduct_ids() != null) {
+            if (ev.getProducts() == null) {
+                ev.setProducts(new java.util.ArrayList<>());
+            } else {
+                ev.getProducts().clear();
+            }
+            for (Integer pid : body.getProduct_ids()) {
+                Product p = productRepository.findById(pid).orElse(null);
+                if (p == null) continue;
+                DiscountEventProduct dep = new DiscountEventProduct();
+                dep.setDiscountEvent(ev);
+                dep.setProduct(p);
+                ev.getProducts().add(dep);
+            }
+        }
+        discountEventRepository.save(ev);
+    }
+    @Override
+    @Transactional
+    public void softDelete(Integer id) {
+        var dc = discountCodeRepository.findById(id).orElse(null);
+        if (dc != null) {
+            // Only allow deleting upcoming and active discount codes
+            LocalDateTime now = LocalDateTime.now();
+            boolean canDelete = Boolean.TRUE.equals(dc.getActive()) && dc.getStartsAt() != null && dc.getStartsAt().isAfter(now);
+            if (!canDelete) {
+                throw new IllegalStateException("Only upcoming discounts can be deleted");
+            }
+            dc.setActive(false);
+            discountCodeRepository.save(dc);
+            return;
+        }
+        var ev = discountEventRepository.findById(id).orElse(null);
+        if (ev != null) {
+            // Only allow deleting upcoming and active discount events
+            LocalDateTime now = LocalDateTime.now();
+            boolean canDelete = Boolean.TRUE.equals(ev.getActive()) && ev.getStartsAt() != null && ev.getStartsAt().isAfter(now);
+            if (!canDelete) {
+                throw new IllegalStateException("Only upcoming discounts can be deleted");
+            }
+            ev.setActive(false);
+            discountEventRepository.save(ev);
+            return;
+        }
+        throw new NoSuchElementException("Promo not found");
+    }
+
+    private DiscountType parseDiscountType(String t) {
+        if (t == null) return DiscountType.AMOUNT;
+        return t.equalsIgnoreCase("PERCENT") ? DiscountType.PERCENT : DiscountType.AMOUNT;
+    }
+
+    private BigDecimal parseDecimal(String s, BigDecimal def) {
+        try { return s == null || s.isBlank() ? def : new BigDecimal(s); } catch (Exception e) { return def; }
+    }
+
+    private Integer parseInteger(String s, Integer def) {
+        try { return s == null || s.isBlank() ? def : Integer.parseInt(s); } catch (Exception e) { return def; }
+    }
+
+    private LocalDateTime parseDateTime(String s) {
+        if (s == null || s.isBlank()) return null;
+        String raw = s.replace("\"", "").trim();
+        try {
+            OffsetDateTime odt = OffsetDateTime.parse(raw);
+            return odt.toLocalDateTime();
+        } catch (Exception ignored) {}
+        try {
+            Instant inst = Instant.parse(raw);
+            return LocalDateTime.ofInstant(inst, ZoneId.systemDefault());
+        } catch (Exception ignored) {}
+        try {
+            return LocalDateTime.parse(raw, DateTimeFormatter.ISO_DATE_TIME);
+        } catch (Exception ignored) {}
+        try {
+            LocalDate d = LocalDate.parse(raw, DateTimeFormatter.ISO_DATE);
+            return d.atStartOfDay();
+        } catch (Exception ignored) {}
+        return null;
     }
 }
 
