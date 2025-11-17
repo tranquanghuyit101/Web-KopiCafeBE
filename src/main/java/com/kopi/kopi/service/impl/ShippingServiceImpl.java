@@ -1,11 +1,13 @@
 package com.kopi.kopi.service.impl;
 
+import com.kopi.kopi.entity.Address;
 import com.kopi.kopi.entity.OrderEntity;
 import com.kopi.kopi.entity.User;
 import com.kopi.kopi.repository.OrderRepository;
 import com.kopi.kopi.repository.UserRepository;
 import com.kopi.kopi.service.ShippingLocationStore;
 import com.kopi.kopi.service.ShippingService;
+import com.kopi.kopi.repository.AddressRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,11 +20,11 @@ public class ShippingServiceImpl implements ShippingService {
     private final ShippingLocationStore store;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
-    private final com.kopi.kopi.repository.AddressRepository addressRepository;
+    private final AddressRepository addressRepository;
     private final MapboxService mapbox;
 
     public ShippingServiceImpl(ShippingLocationStore store, OrderRepository orderRepository, UserRepository userRepository,
-                               com.kopi.kopi.repository.AddressRepository addressRepository,
+                               AddressRepository addressRepository,
                                MapboxService mapbox) {
         this.store = store;
         this.orderRepository = orderRepository;
@@ -41,6 +43,7 @@ public class ShippingServiceImpl implements ShippingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<?> getLocation(Integer orderId, String roleName, Integer userId) {
         // Allow only the customer of the order OR the assigned shipper to read location
         Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
@@ -58,6 +61,7 @@ public class ShippingServiceImpl implements ShippingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<?> getOrderShippingInfo(Integer orderId, String roleName, Integer userId) {
         Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
         if (orderOpt.isEmpty()) return ResponseEntity.status(404).body(Map.of("message", "Order not found"));
@@ -104,7 +108,7 @@ public class ShippingServiceImpl implements ShippingService {
     @Override
     public ResponseEntity<?> estimateFee(Integer addressId, String addressLine) {
         try {
-            com.kopi.kopi.entity.Address addr = null;
+            Address addr = null;
             if (addressId != null) {
                 addr = addressRepository.findById(addressId).orElse(null);
             }
@@ -113,7 +117,7 @@ public class ShippingServiceImpl implements ShippingService {
                 if (geo == null) {
                     return ResponseEntity.badRequest().body(Map.of("message", "Không xác định được địa chỉ"));
                 }
-                addr = com.kopi.kopi.entity.Address.builder()
+                addr = Address.builder()
                         .addressLine(addressLine)
                         .city(geo.city())
                         .latitude(geo.lat())

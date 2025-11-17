@@ -21,6 +21,10 @@ import org.springframework.context.annotation.Lazy;
 @Configuration
 public class SecurityConfig {
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    @org.springframework.beans.factory.annotation.Value("${app.frontend.url:https://kopi-coffee-fe.vercel.app}")
+    private String frontendUrl;
+    @org.springframework.beans.factory.annotation.Value("${LOCAL_FRONTEND:}")
+    private String localFrontend;
 
 	public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -63,7 +67,14 @@ public class SecurityConfig {
   @Bean
   public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
       var cfg = new org.springframework.web.cors.CorsConfiguration();
-      cfg.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+      java.util.List<String> origins = new java.util.ArrayList<>();
+      if (frontendUrl != null && !frontendUrl.isBlank()) {
+          origins.add(frontendUrl);
+      }
+      if (localFrontend != null && !localFrontend.isBlank()) {
+          origins.add(localFrontend);
+      }
+      cfg.setAllowedOrigins(origins);
       cfg.setAllowedMethods(java.util.List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
       cfg.setAllowedHeaders(java.util.List.of("*"));
       cfg.setAllowCredentials(true);
@@ -104,6 +115,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/apiv1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                        .requestMatchers("/apiv1/payment/payos/return", "/apiv1/payment/payos/cancel", "/apiv1/payment/payos/webhook").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/apiv1/auth/force-change-password").authenticated()
                         .anyRequest().authenticated()
                 )

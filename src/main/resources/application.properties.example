@@ -1,5 +1,5 @@
 spring.application.name=kopi
-server.port=8080
+server.port=${PORT:8080}
 
 # --- SQL Server ---
 spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=Kopi;encrypt=true;trustServerCertificate=true
@@ -17,8 +17,6 @@ spring.datasource.hikari.read-only=false
 app.jwt.secret=YOUR_JWT_SECRET_KEY_PLEASE_CHANGE_IN_PRODUCTION
 app.jwt.expiration-ms=86400000
 app.jwt.remember-expiration-ms=604800000
-
-server.servlet.context-path=/Kopi
 
 # --- Gmail SMTP ---
 spring.mail.host=smtp.gmail.com

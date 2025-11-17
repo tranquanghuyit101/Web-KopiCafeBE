@@ -93,4 +93,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
   """, nativeQuery = true)
     int countPendingPayments();
 
+    java.util.Optional<Payment> findByTxnRef(String txnRef);
+
 }

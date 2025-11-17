@@ -113,11 +113,57 @@ CREATE TABLE dbo.order_details (
     order_detail_id       INT IDENTITY(1,1) NOT NULL,
     order_id              INT        NOT NULL,
     product_id            INT        NOT NULL,
+    size_id               INT        NULL,
     product_name_snapshot NVARCHAR(150) NOT NULL,
     unit_price            DECIMAL(18,2) NOT NULL,
     quantity              INT           NOT NULL,
     line_total            AS (CONVERT(DECIMAL(18,2), unit_price * quantity)) PERSISTED,
     note                  NVARCHAR(255) NULL
+);
+
+-- SIZES
+CREATE TABLE dbo.sizes (
+    size_id        INT IDENTITY(1,1) NOT NULL,
+    name           NVARCHAR(50)  NOT NULL,
+    code           NVARCHAR(20)  NULL,
+    display_order  INT           NOT NULL,
+    created_at     DATETIME2(3)  NOT NULL,
+    updated_at     DATETIME2(3)  NOT NULL
+);
+
+-- PRODUCT_SIZES (product <-> size with price per size)
+CREATE TABLE dbo.product_sizes (
+    product_size_id INT IDENTITY(1,1) NOT NULL,
+    product_id      INT           NOT NULL,
+    size_id         INT           NOT NULL,
+    price           DECIMAL(18,2) NOT NULL,
+    is_available    BIT           NOT NULL
+);
+
+-- ADD_ONS (toppings)
+CREATE TABLE dbo.add_ons (
+    add_on_id      INT IDENTITY(1,1) NOT NULL,
+    name           NVARCHAR(100) NOT NULL,
+    display_order  INT          NOT NULL,
+    created_at     DATETIME2(3) NOT NULL,
+    updated_at     DATETIME2(3) NOT NULL
+);
+
+-- PRODUCT_ADD_ONS (mapping add-on availability and price per product)
+CREATE TABLE dbo.product_add_ons (
+    product_add_on_id INT IDENTITY(1,1) NOT NULL,
+    product_id        INT           NOT NULL,
+    add_on_id         INT           NOT NULL,
+    price             DECIMAL(18,2) NOT NULL,
+    is_available      BIT           NOT NULL
+);
+
+-- ORDER_DETAIL_ADD_ONS (selected add-ons per order line)
+CREATE TABLE dbo.order_detail_add_ons (
+    order_detail_add_on_id INT IDENTITY(1,1) NOT NULL,
+    order_detail_id        INT           NOT NULL,
+    add_on_id              INT           NOT NULL,
+    unit_price_snapshot    DECIMAL(18,2) NOT NULL
 );
 
 -- PAYMENTS
@@ -130,6 +176,18 @@ CREATE TABLE dbo.payments (
     txn_ref      NVARCHAR(100) NULL,
     paid_at      DATETIME2(3)  NULL,
     created_at   DATETIME2(3)  NOT NULL
+);
+
+-- NOTIFICATIONS
+CREATE TABLE dbo.notifications (
+    notification_id INT IDENTITY(1,1) NOT NULL,
+    user_id         INT NOT NULL,
+    order_id        INT NULL,
+    title           NVARCHAR(255) NOT NULL,
+    message         NVARCHAR(1000) NOT NULL,
+    type            NVARCHAR(50) NOT NULL,
+    is_read         BIT NOT NULL,
+    created_at      DATETIME2(3) NOT NULL
 );
 
 -- TABLES
@@ -203,6 +261,7 @@ CREATE TABLE dbo.discount_codes (
     total_usage_limit INT           NULL,
     per_user_limit    INT           NULL,
     is_active        BIT            NOT NULL,
+    is_shipping_fee  BIT            NOT NULL,
     usage_count       INT            NOT NULL,
     created_at       DATETIME2(3)   NOT NULL
 );
@@ -285,6 +344,15 @@ CREATE TABLE dbo.employee_shifts (
     updated_at         DATETIME2(3) NULL
 );
 
+-- POSITION_SHIFT_RULES (scheduling rules per position and shift)
+CREATE TABLE dbo.position_shift_rules (
+    rule_id        INT IDENTITY(1,1) NOT NULL,
+    position_id    INT NOT NULL,
+    shift_id       INT NOT NULL,
+    is_allowed     BIT NOT NULL,
+    required_count INT NULL
+);
+
 ----------------------------------------------------------------
 -- B) ADD PRIMARY KEYS
 ----------------------------------------------------------------
@@ -298,6 +366,11 @@ ALTER TABLE dbo.categories       ADD CONSTRAINT PK_categories PRIMARY KEY (categ
 ALTER TABLE dbo.products         ADD CONSTRAINT PK_products PRIMARY KEY (product_id);
 ALTER TABLE dbo.orders           ADD CONSTRAINT PK_orders PRIMARY KEY (order_id);
 ALTER TABLE dbo.order_details    ADD CONSTRAINT PK_order_details PRIMARY KEY (order_detail_id);
+ALTER TABLE dbo.sizes            ADD CONSTRAINT PK_sizes PRIMARY KEY (size_id);
+ALTER TABLE dbo.product_sizes    ADD CONSTRAINT PK_product_sizes PRIMARY KEY (product_size_id);
+ALTER TABLE dbo.add_ons          ADD CONSTRAINT PK_add_ons PRIMARY KEY (add_on_id);
+ALTER TABLE dbo.product_add_ons  ADD CONSTRAINT PK_product_add_ons PRIMARY KEY (product_add_on_id);
+ALTER TABLE dbo.order_detail_add_ons ADD CONSTRAINT PK_order_detail_add_ons PRIMARY KEY (order_detail_add_on_id);
 ALTER TABLE dbo.payments         ADD CONSTRAINT PK_payments PRIMARY KEY (payment_id);
 ALTER TABLE dbo.tables           ADD CONSTRAINT PK_tables PRIMARY KEY (table_id);
  -- Removed PK for dbo.schedules
@@ -312,6 +385,8 @@ ALTER TABLE dbo.shift             ADD CONSTRAINT PK_shift PRIMARY KEY (shift_id)
 ALTER TABLE dbo.recurrence_patterns ADD CONSTRAINT PK_recurrence_patterns PRIMARY KEY (recurrence_id);
 ALTER TABLE dbo.work_schedules    ADD CONSTRAINT PK_work_schedules PRIMARY KEY (work_schedule_id);
 ALTER TABLE dbo.employee_shifts   ADD CONSTRAINT PK_employee_shifts PRIMARY KEY (employee_shift_id);
+ALTER TABLE dbo.notifications     ADD CONSTRAINT PK_notifications PRIMARY KEY (notification_id);
+ALTER TABLE dbo.position_shift_rules ADD CONSTRAINT PK_position_shift_rules PRIMARY KEY (rule_id);
 
 ----------------------------------------------------------------
 -- C) ADD FOREIGN KEYS
@@ -336,6 +411,21 @@ ALTER TABLE dbo.orders
 ALTER TABLE dbo.order_details
     ADD CONSTRAINT FK_order_details_order FOREIGN KEY (order_id) REFERENCES dbo.orders(order_id) ON DELETE CASCADE,
         CONSTRAINT FK_order_details_product FOREIGN KEY (product_id) REFERENCES dbo.products(product_id);
+
+ALTER TABLE dbo.order_details
+    ADD CONSTRAINT FK_order_details_size FOREIGN KEY (size_id) REFERENCES dbo.sizes(size_id) ON DELETE NO ACTION;
+
+ALTER TABLE dbo.product_sizes
+    ADD CONSTRAINT FK_product_sizes_product FOREIGN KEY (product_id) REFERENCES dbo.products(product_id) ON DELETE NO ACTION,
+        CONSTRAINT FK_product_sizes_size FOREIGN KEY (size_id) REFERENCES dbo.sizes(size_id) ON DELETE NO ACTION;
+
+ALTER TABLE dbo.product_add_ons
+    ADD CONSTRAINT FK_product_add_ons_product FOREIGN KEY (product_id) REFERENCES dbo.products(product_id) ON DELETE NO ACTION,
+        CONSTRAINT FK_product_add_ons_addon FOREIGN KEY (add_on_id) REFERENCES dbo.add_ons(add_on_id) ON DELETE NO ACTION;
+
+ALTER TABLE dbo.order_detail_add_ons
+    ADD CONSTRAINT FK_order_detail_add_ons_detail FOREIGN KEY (order_detail_id) REFERENCES dbo.order_details(order_detail_id) ON DELETE NO ACTION,
+        CONSTRAINT FK_order_detail_add_ons_addon FOREIGN KEY (add_on_id) REFERENCES dbo.add_ons(add_on_id) ON DELETE NO ACTION;
 
 ALTER TABLE dbo.payments
     ADD CONSTRAINT FK_payments_order FOREIGN KEY (order_id) REFERENCES dbo.orders(order_id) ON DELETE CASCADE;
@@ -398,6 +488,16 @@ ALTER TABLE dbo.employee_shifts
     ADD CONSTRAINT FK_employee_shifts_created_by FOREIGN KEY (created_by_user_id) REFERENCES dbo.users(user_id) ON DELETE NO ACTION;
 ALTER TABLE dbo.employee_shifts
     ADD CONSTRAINT FK_employee_shifts_updated_by FOREIGN KEY (updated_by_user_id) REFERENCES dbo.users(user_id) ON DELETE NO ACTION;
+
+-- Notifications FKs
+ALTER TABLE dbo.notifications
+    ADD CONSTRAINT FK_notifications_user FOREIGN KEY (user_id) REFERENCES dbo.users(user_id),
+        CONSTRAINT FK_notifications_order FOREIGN KEY (order_id) REFERENCES dbo.orders(order_id);
+
+-- Position shift rules FKs
+ALTER TABLE dbo.position_shift_rules
+    ADD CONSTRAINT FK_position_shift_rules_position FOREIGN KEY (position_id) REFERENCES dbo.positions(position_id) ON DELETE CASCADE,
+        CONSTRAINT FK_position_shift_rules_shift FOREIGN KEY (shift_id) REFERENCES dbo.shift(shift_id) ON DELETE CASCADE;
 
 ----------------------------------------------------------------
 -- D) ADD CHECK CONSTRAINTS
@@ -538,6 +638,7 @@ ALTER TABLE dbo.discount_events
 
 ALTER TABLE dbo.discount_codes
     ADD CONSTRAINT DF_discount_codes_is_active DEFAULT (1) FOR is_active,
+        CONSTRAINT DF_discount_codes_is_shipping_fee DEFAULT (0) FOR is_shipping_fee,
         CONSTRAINT DF_discount_codes_created_at DEFAULT SYSUTCDATETIME() FOR created_at,
         CONSTRAINT DF_discount_codes_usage_count DEFAULT (0) FOR usage_count;
 
@@ -549,12 +650,39 @@ ALTER TABLE dbo.shift
     ADD CONSTRAINT DF_shift_is_active DEFAULT (1) FOR is_active,
         CONSTRAINT DF_shift_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
 
+-- Sizes defaults
+ALTER TABLE dbo.sizes
+    ADD CONSTRAINT DF_sizes_display_order DEFAULT (0) FOR display_order,
+        CONSTRAINT DF_sizes_created_at DEFAULT SYSUTCDATETIME() FOR created_at,
+        CONSTRAINT DF_sizes_updated_at DEFAULT SYSUTCDATETIME() FOR updated_at;
+
+-- Add-ons defaults
+ALTER TABLE dbo.add_ons
+    ADD CONSTRAINT DF_add_ons_display_order DEFAULT (0) FOR display_order,
+        CONSTRAINT DF_add_ons_created_at DEFAULT SYSUTCDATETIME() FOR created_at,
+        CONSTRAINT DF_add_ons_updated_at DEFAULT SYSUTCDATETIME() FOR updated_at;
+
+-- Mapping defaults
+ALTER TABLE dbo.product_sizes
+    ADD CONSTRAINT DF_product_sizes_is_available DEFAULT (1) FOR is_available;
+
+ALTER TABLE dbo.product_add_ons
+    ADD CONSTRAINT DF_product_add_ons_is_available DEFAULT (1) FOR is_available;
+
 ALTER TABLE dbo.work_schedules
     ADD CONSTRAINT DF_work_schedules_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
 
 ALTER TABLE dbo.employee_shifts
     ADD CONSTRAINT DF_employee_shifts_status DEFAULT (N'assigned') FOR status,
         CONSTRAINT DF_employee_shifts_created_at DEFAULT SYSUTCDATETIME() FOR created_at;
+
+ALTER TABLE dbo.notifications
+    ADD CONSTRAINT DF_notifications_is_read DEFAULT (0) FOR is_read,
+        CONSTRAINT DF_notifications_created_at DEFAULT GETDATE() FOR created_at;
+
+ALTER TABLE dbo.position_shift_rules
+    ADD CONSTRAINT DF_position_shift_rules_is_allowed DEFAULT (0) FOR is_allowed,
+        CONSTRAINT DF_position_shift_rules_required_count DEFAULT (0) FOR required_count;
 
 ----------------------------------------------------------------
 -- F) CREATE INDEXES & UNIQUE CONSTRAINTS
@@ -607,11 +735,16 @@ CREATE INDEX IX_orders_shipper_user_id ON dbo.orders(shipper_user_id);
 -- ORDER DETAILS
 CREATE INDEX IX_order_details_order ON dbo.order_details(order_id);
 CREATE INDEX IX_order_details_product ON dbo.order_details(product_id);
+CREATE INDEX IX_order_details_size ON dbo.order_details(size_id);
 
 -- PAYMENTS
 CREATE UNIQUE INDEX UX_payments_txn_ref_notnull ON dbo.payments(txn_ref) WHERE txn_ref IS NOT NULL;
 CREATE INDEX IX_payments_order ON dbo.payments(order_id);
 CREATE INDEX IX_payments_status ON dbo.payments(status);
+
+-- NOTIFICATIONS
+CREATE INDEX IX_notifications_user_created ON dbo.notifications(user_id, created_at DESC);
+CREATE INDEX IX_notifications_user_unread ON dbo.notifications(user_id, is_read) WHERE is_read = 0;
 
  -- Removed indexes for dbo.schedules
 
@@ -626,12 +759,37 @@ CREATE INDEX IX_positions_updated_by ON dbo.positions(updated_by_user_id);
 CREATE UNIQUE INDEX UQ_shift_name ON dbo.shift(shift_name);
 CREATE INDEX IX_shift_is_active ON dbo.shift(is_active);
 
+-- Position shift rules
+CREATE INDEX IX_position_shift_rules_position ON dbo.position_shift_rules(position_id);
+CREATE INDEX IX_position_shift_rules_shift ON dbo.position_shift_rules(shift_id);
+
 CREATE INDEX IX_work_schedules_date ON dbo.work_schedules(start_date, end_date);
 
 CREATE INDEX IX_employee_shifts_schedule ON dbo.employee_shifts(work_schedule_id);
 CREATE INDEX IX_employee_shifts_employee ON dbo.employee_shifts(employee_id);
 CREATE INDEX IX_employee_shifts_shift ON dbo.employee_shifts(shift_id);
 CREATE INDEX IX_employee_shifts_date ON dbo.employee_shifts(shift_date);
+
+-- SIZES
+CREATE UNIQUE INDEX UX_sizes_name ON dbo.sizes(name);
+CREATE UNIQUE INDEX UX_sizes_code_notnull ON dbo.sizes(code) WHERE code IS NOT NULL;
+
+-- PRODUCT_SIZES
+CREATE UNIQUE INDEX UX_product_sizes_pair ON dbo.product_sizes(product_id, size_id);
+CREATE INDEX IX_product_sizes_product ON dbo.product_sizes(product_id);
+CREATE INDEX IX_product_sizes_size ON dbo.product_sizes(size_id);
+
+-- ADD_ONS
+CREATE UNIQUE INDEX UX_add_ons_name ON dbo.add_ons(name);
+
+-- PRODUCT_ADD_ONS
+CREATE UNIQUE INDEX UX_product_add_ons_pair ON dbo.product_add_ons(product_id, add_on_id);
+CREATE INDEX IX_product_add_ons_product ON dbo.product_add_ons(product_id);
+CREATE INDEX IX_product_add_ons_add_on ON dbo.product_add_ons(add_on_id);
+
+-- ORDER_DETAIL_ADD_ONS
+CREATE INDEX IX_order_detail_add_ons_detail ON dbo.order_detail_add_ons(order_detail_id);
+CREATE INDEX IX_order_detail_add_ons_addon ON dbo.order_detail_add_ons(add_on_id);
 
 -- Unique assignment per employee per (date, shift) for assigned shifts only
 CREATE UNIQUE INDEX UX_employee_shifts_employee_date_shift

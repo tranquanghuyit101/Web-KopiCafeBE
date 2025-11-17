@@ -52,6 +52,9 @@ public class DiscountCode {
 	@Column(name = "is_active", nullable = false)
 	private Boolean active;
 
+	@Column(name = "is_shipping_fee", nullable = false)
+	private Boolean shippingFee;
+
 	@Column(name = "usage_count", nullable = false)
 	private Integer usageCount;
 

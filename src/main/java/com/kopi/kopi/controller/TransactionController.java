@@ -67,6 +67,13 @@ public class TransactionController {
         return orderService.validateProducts(body);
     }
 
+    @PostMapping("/orders/validate-discount")
+    public ResponseEntity<?> validateDiscount(@RequestBody Map<String, Object> body) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        User current = ((UserPrincipal) auth.getPrincipal()).getUser();
+        return orderService.validateDiscount(body, current);
+    }
+
     private BigDecimal defaultBigDecimal(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
     }

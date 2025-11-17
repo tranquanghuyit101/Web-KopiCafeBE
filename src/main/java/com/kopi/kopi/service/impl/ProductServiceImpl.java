@@ -2,8 +2,14 @@ package com.kopi.kopi.service.impl;
 
 import com.kopi.kopi.entity.Category;
 import com.kopi.kopi.entity.Product;
+import com.kopi.kopi.entity.ProductAddOn;
+import com.kopi.kopi.entity.ProductSize;
+import com.kopi.kopi.entity.DiscountEvent;
 import com.kopi.kopi.repository.CategoryRepository;
+import com.kopi.kopi.repository.ProductAddOnRepository;
 import com.kopi.kopi.repository.ProductRepository;
+import com.kopi.kopi.repository.ProductSizeRepository;
+import com.kopi.kopi.repository.DiscountEventRepository;
 import com.kopi.kopi.service.ProductService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -11,8 +17,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,13 +30,43 @@ import java.util.Map;
 public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final ProductSizeRepository productSizeRepository;
+    private final ProductAddOnRepository productAddOnRepository;
+    private final DiscountEventRepository discountEventRepository;
 
-    public ProductServiceImpl(ProductRepository productRepository, CategoryRepository categoryRepository) {
+    public ProductServiceImpl(ProductRepository productRepository, CategoryRepository categoryRepository, ProductSizeRepository productSizeRepository, ProductAddOnRepository productAddOnRepository, DiscountEventRepository discountEventRepository) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
+        this.productSizeRepository = productSizeRepository;
+        this.productAddOnRepository = productAddOnRepository;
+        this.discountEventRepository = discountEventRepository;
+    }
+
+    private BigDecimal computeDiscountedPrice(BigDecimal price, DiscountEvent ev) {
+        if (price == null) return null;
+        if (ev == null) return null;
+        BigDecimal value = ev.getDiscountValue() != null ? ev.getDiscountValue() : BigDecimal.ZERO;
+        if (ev.getDiscountType() == null) return null;
+        switch (ev.getDiscountType()) {
+            case PERCENT -> {
+                // clamp percent between 0 and 100
+                BigDecimal pct = value.max(BigDecimal.ZERO).min(new BigDecimal("100"));
+                BigDecimal multiplier = BigDecimal.ONE.subtract(pct.divide(new BigDecimal("100")));
+                BigDecimal result = price.multiply(multiplier);
+                return result.max(BigDecimal.ZERO);
+            }
+            case AMOUNT -> {
+                BigDecimal result = price.subtract(value);
+                return result.max(BigDecimal.ZERO);
+            }
+            default -> {
+                return null;
+            }
+        }
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> list(Integer categoryId, String orderBy, String sort, String searchByName, Integer limit, Integer page) {
         Sort s = Sort.unsorted();
         if (orderBy != null && !orderBy.isBlank()) {
@@ -57,6 +95,19 @@ public class ProductServiceImpl implements ProductService {
             m.put("name", p.getName());
             m.put("img", p.getImgUrl());
             m.put("price", p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO);
+            m.put("originalPrice", p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO);
+            try {
+                var activeEv = discountEventRepository.findActiveEventByProductId(p.getProductId(), LocalDateTime.now()).orElse(null);
+                BigDecimal discounted = computeDiscountedPrice(p.getPrice(), activeEv);
+                if (discounted != null && p.getPrice() != null && discounted.compareTo(p.getPrice()) != 0) {
+                    m.put("discountedPrice", discounted);
+                    if (activeEv != null) {
+                        m.put("discountEventId", activeEv.getDiscountEventId());
+                        m.put("discountType", activeEv.getDiscountType() != null ? activeEv.getDiscountType().name() : null);
+                        m.put("discountValue", activeEv.getDiscountValue());
+                    }
+                }
+            } catch (Exception ignored) {}
             m.put("stock", p.getStockQty());
             m.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
             items.add(m);
@@ -76,6 +127,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> detail(Integer id) {
         Product p = productRepository.findById(id).orElseThrow();
         Map<String, Object> item = new HashMap<>();
@@ -83,13 +135,63 @@ public class ProductServiceImpl implements ProductService {
         item.put("name", p.getName());
         item.put("img", p.getImgUrl());
         item.put("price", p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO);
+        item.put("originalPrice", p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO);
+        try {
+            var activeEv = discountEventRepository.findActiveEventByProductId(p.getProductId(), LocalDateTime.now()).orElse(null);
+            BigDecimal discounted = computeDiscountedPrice(p.getPrice(), activeEv);
+            if (discounted != null && p.getPrice() != null && discounted.compareTo(p.getPrice()) != 0) {
+                item.put("discountedPrice", discounted);
+                if (activeEv != null) {
+                    item.put("discountEventId", activeEv.getDiscountEventId());
+                    item.put("discountType", activeEv.getDiscountType() != null ? activeEv.getDiscountType().name() : null);
+                    item.put("discountValue", activeEv.getDiscountValue());
+                }
+            }
+        } catch (Exception ignored) {}
         item.put("stock", p.getStockQty());
         item.put("desc", p.getDescription());
         item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
+        // sizes from DB (available only), include delta and computed price
+        try {
+            List<Map<String, Object>> sizes = new ArrayList<>();
+            for (ProductSize ps : productSizeRepository.findByProduct_ProductIdAndAvailableTrue(p.getProductId())) {
+                var s = ps.getSize();
+                Map<String, Object> m = new HashMap<>();
+                m.put("size_id", s != null ? s.getSizeId() : null);
+                m.put("name", s != null ? s.getName() : null);
+                m.put("code", s != null ? s.getCode() : null);
+                BigDecimal base = p.getPrice() != null ? p.getPrice() : BigDecimal.ZERO;
+                BigDecimal delta = ps.getPrice() != null ? ps.getPrice() : BigDecimal.ZERO;
+                m.put("price_delta", delta);
+                m.put("price", base.add(delta));
+                m.put("available", Boolean.TRUE.equals(ps.getAvailable()));
+                sizes.add(m);
+            }
+            item.put("sizes", sizes);
+        } catch (Exception ignored) {
+            item.put("sizes", List.of());
+        }
+        // add-ons from DB (available only)
+        try {
+            List<Map<String, Object>> addons = new ArrayList<>();
+            for (ProductAddOn pa : productAddOnRepository.findByProduct_ProductIdAndAvailableTrue(p.getProductId())) {
+                var a = pa.getAddOn();
+                Map<String, Object> m = new HashMap<>();
+                m.put("add_on_id", a != null ? a.getAddOnId() : null);
+                m.put("name", a != null ? a.getName() : null);
+                m.put("price", pa.getPrice() != null ? pa.getPrice() : BigDecimal.ZERO);
+                m.put("available", Boolean.TRUE.equals(pa.getAvailable()));
+                addons.add(m);
+            }
+            item.put("add_ons", addons);
+        } catch (Exception ignored) {
+            item.put("add_ons", List.of());
+        }
         return Map.of("data", List.of(item));
     }
 
     @Override
+    @Transactional
     public ResponseEntity<?> create(org.springframework.web.multipart.MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price) {
         Category category = categoryRepository.findById(categoryId).orElseThrow();
         Product p = new Product();
@@ -118,6 +220,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public ResponseEntity<?> update(Integer id, org.springframework.web.multipart.MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price) {
         Product p = productRepository.findById(id).orElseThrow();
         if (name != null && !name.isBlank()) {
@@ -147,6 +250,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    @Transactional
     public ResponseEntity<?> delete(Integer id) {
         Product p = productRepository.findById(id).orElse(null);
         if (p == null) {
