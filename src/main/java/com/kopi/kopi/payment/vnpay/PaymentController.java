@@ -159,9 +159,12 @@ public class PaymentController {
 				payment.setPaidAt(LocalDateTime.now());
 				paymentRepository.save(payment);
 
-				order.setStatus("COMPLETED");
+				// Set order status to PAID (not COMPLETED) so staff can still see and process the order
+				// COMPLETED status is set later when staff confirms order fulfillment
+				order.setStatus("PAID");
+				order.setUpdatedAt(LocalDateTime.now());
 				orderRepository.save(order);
-				System.out.println("PayOS Webhook - Payment updated to PAID, Order updated to COMPLETED");
+				System.out.println("PayOS Webhook - Payment updated to PAID, Order updated to PAID");
 			} else {
 				// Thanh toán thất bại
 				payment.setStatus(PaymentStatus.CANCELLED);
