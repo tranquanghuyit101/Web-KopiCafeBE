@@ -9,8 +9,8 @@ import java.util.Map;
 public interface ProductService {
     Map<String, Object> list(Integer categoryId, String orderBy, String sort, String searchByName, Integer limit, Integer page);
     Map<String, Object> detail(Integer id);
-    ResponseEntity<?> create(MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price);
-    ResponseEntity<?> update(Integer id, MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price);
+    ResponseEntity<?> create(MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price, Integer stockQty);
+    ResponseEntity<?> update(Integer id, MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price, Integer stockQty);
     ResponseEntity<?> delete(Integer id);
 }
 

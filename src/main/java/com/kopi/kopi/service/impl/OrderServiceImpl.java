@@ -333,12 +333,14 @@ public class OrderServiceImpl implements OrderService {
             Payment payment = order.getPayments().get(0);
             if (Objects.equals(status, "COMPLETED")) {
                 payment.setStatus(PaymentStatus.PAID);
+                if (payment.getPaidAt() == null) payment.setPaidAt(LocalDateTime.now());
             } else if (Objects.equals(status, "CANCELLED")) {
                 payment.setStatus(PaymentStatus.CANCELLED);
             } else if (Objects.equals(status, "PENDING")) {
                 payment.setStatus(PaymentStatus.PENDING);
             } else if (Objects.equals(status, "PAID")) {
                 payment.setStatus(PaymentStatus.PAID);
+                if (payment.getPaidAt() == null) payment.setPaidAt(LocalDateTime.now());
             }
         }
         orderRepository.save(order);
@@ -577,6 +579,9 @@ public class OrderServiceImpl implements OrderService {
                     .status(paid ? PaymentStatus.PAID : PaymentStatus.PENDING)
                     .createdAt(LocalDateTime.now())
                     .build();
+            if (paid) {
+                payment.setPaidAt(LocalDateTime.now());
+            }
             order.getPayments().add(payment);
         }
 
@@ -838,6 +843,9 @@ public class OrderServiceImpl implements OrderService {
                 .status(Boolean.TRUE.equals(req.paid()) ? PaymentStatus.PAID : PaymentStatus.PENDING)
                 .createdAt(LocalDateTime.now())
                 .build();
+        if (Boolean.TRUE.equals(req.paid())) {
+            payment.setPaidAt(LocalDateTime.now());
+        }
         order.getPayments().add(payment);
 
         OrderEntity saved = orderRepository.save(order);

@@ -84,12 +84,6 @@ public class OrderEntity {
 	@ToString.Exclude
 	@EqualsAndHashCode.Exclude
 	@Builder.Default
-	private List<InventoryLog> inventoryLogs = new ArrayList<>();
-
-	@OneToMany(mappedBy = "order", fetch = FetchType.LAZY)
-	@ToString.Exclude
-	@EqualsAndHashCode.Exclude
-	@Builder.Default
 	private List<DiscountCodeRedemption> discountCodeRedemptions = new ArrayList<>();
 
 	@ManyToOne(fetch = FetchType.LAZY)

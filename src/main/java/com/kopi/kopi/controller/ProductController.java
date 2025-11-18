@@ -52,9 +52,10 @@ public class ProductController {
 		@RequestParam("name") String name,
 		@RequestParam("category_id") Integer categoryId,
 		@RequestParam(value = "desc", required = false) String desc,
-		@RequestParam("price") BigDecimal price
+		@RequestParam("price") BigDecimal price,
+		@RequestParam(value = "stock_qty", required = false) Integer stockQty
 	) {
-		return productService.create(image, imgUrl, name, categoryId, desc, price);
+		return productService.create(image, imgUrl, name, categoryId, desc, price, stockQty);
 	}
 
 	@PatchMapping("/{id}")
@@ -66,9 +67,10 @@ public class ProductController {
         @RequestParam(value = "name", required = false) String name,
         @RequestParam(value = "category_id", required = false) Integer categoryId,
         @RequestParam(value = "desc", required = false) String desc,
-        @RequestParam(value = "price", required = false) BigDecimal price
+        @RequestParam(value = "price", required = false) BigDecimal price,
+        @RequestParam(value = "stock_qty", required = false) Integer stockQty
     ) {
-		return productService.update(id, image, imgUrl, name, categoryId, desc, price);
+		return productService.update(id, image, imgUrl, name, categoryId, desc, price, stockQty);
 	}
 
 	@DeleteMapping("/{id}")

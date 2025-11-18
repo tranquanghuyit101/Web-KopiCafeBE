@@ -1,9 +1,15 @@
 package com.kopi.kopi.service.impl;
 
+import com.kopi.kopi.dto.CustomerListDto;
+import com.kopi.kopi.dto.EmployeeDetailDto;
+import com.kopi.kopi.dto.EmployeeSimpleDto;
+import com.kopi.kopi.dto.UpdateEmployeeRequest;
+import com.kopi.kopi.entity.Address;
 import com.kopi.kopi.entity.User;
-import com.kopi.kopi.entity.AddressHome;
 import com.kopi.kopi.repository.UserRepository;
-import com.kopi.kopi.repository.AddressHomeRepository;
+import com.kopi.kopi.repository.PositionRepository;
+import com.kopi.kopi.repository.RoleRepository;
+import com.kopi.kopi.repository.UserAddressRepository;
 import com.kopi.kopi.security.ForceChangeStore;
 import com.kopi.kopi.service.EmailService;
 import com.kopi.kopi.service.IUserService;
@@ -18,11 +24,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import com.kopi.kopi.entity.enums.UserStatus;
 import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 
 @Service
 public class UserServiceImpl implements IUserService {
@@ -31,9 +42,9 @@ public class UserServiceImpl implements IUserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final ForceChangeStore forceChangeStore;
-    private final AddressHomeRepository addressHomeRepository;
-    private final com.kopi.kopi.repository.RoleRepository roleRepository;
-    private final com.kopi.kopi.repository.PositionRepository positionRepository;
+    private final UserAddressRepository userAddressRepository;
+    private final RoleRepository roleRepository;
+    private final PositionRepository positionRepository;
 
     // Mở rộng Constructor chính
     @Autowired
@@ -42,14 +53,14 @@ public class UserServiceImpl implements IUserService {
             PasswordEncoder passwordEncoder,
             @Qualifier("smtpEmailService") EmailService emailService, // match bean theo name
             ForceChangeStore forceChangeStore,
-            AddressHomeRepository addressHomeRepository,
-            com.kopi.kopi.repository.RoleRepository roleRepository,
-            com.kopi.kopi.repository.PositionRepository positionRepository) {
+            UserAddressRepository userAddressRepository,
+            RoleRepository roleRepository,
+            PositionRepository positionRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.forceChangeStore = forceChangeStore;
-        this.addressHomeRepository = addressHomeRepository;
+        this.userAddressRepository = userAddressRepository;
         this.roleRepository = roleRepository;
         this.positionRepository = positionRepository;
     }
@@ -85,7 +96,7 @@ public class UserServiceImpl implements IUserService {
                             "\nPlease log in and change it immediately."
             );
         } catch (Exception ex) {
-            org.slf4j.LoggerFactory.getLogger(getClass())
+            LoggerFactory.getLogger(getClass())
                     .warn("Send mail failed for {}: {}", user.getEmail(), ex.getMessage());
         }
         System.out.println("Temporary password for " + user.getEmail() + ": " + tmp);
@@ -115,7 +126,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<com.kopi.kopi.dto.EmployeeSimpleDto> listEmployees() {
+    public List<EmployeeSimpleDto> listEmployees() {
         // return users whose role_id == 2, excluding BANNED
         java.util.List<User> users = userRepository.findByRoleRoleIdAndStatusNot(2, UserStatus.BANNED);
         return users.stream().map(u -> {
@@ -123,19 +134,19 @@ public class UserServiceImpl implements IUserService {
             String fullNameLocal = u.getFullName();
             String positionName = (u.getPosition() != null ? u.getPosition().getPositionName() : null);
             String status = (u.getStatus() != null ? u.getStatus().name() : null);
-            return new com.kopi.kopi.dto.EmployeeSimpleDto(userId, fullNameLocal, positionName, status);
+            return new EmployeeSimpleDto(userId, fullNameLocal, positionName, status);
         }).collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public java.util.List<com.kopi.kopi.dto.EmployeeSimpleDto> searchEmployees(String positionName, String phone,
+    public List<EmployeeSimpleDto> searchEmployees(String positionName, String phone,
             String email, String fullName) {
         // build dynamic specification to filter employees (role_id == 2)
         Specification<User> spec = (root, query, cb) -> {
             // ensure distinct root when joining
             query.distinct(true);
-            java.util.List<jakarta.persistence.criteria.Predicate> preds = new java.util.ArrayList<>();
+            List<Predicate> preds = new ArrayList<>();
             // only employees (role_id == 2)
             var roleJoin = root.join("role", JoinType.LEFT);
             preds.add(cb.equal(roleJoin.get("roleId"), 2));
@@ -155,30 +166,32 @@ public class UserServiceImpl implements IUserService {
             }
             // exclude BANNED users from search results
             preds.add(cb.notEqual(root.get("status"), UserStatus.BANNED));
-            return cb.and(preds.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            return cb.and(preds.toArray(new Predicate[0]));
         };
 
-        java.util.List<User> users = userRepository.findAll(spec);
+        List<User> users = userRepository.findAll(spec);
 
         return users.stream().map(u -> {
             Integer userId = u.getUserId();
             String fullNameLocal = u.getFullName();
             String positionNameLocal = (u.getPosition() != null ? u.getPosition().getPositionName() : null);
             String status = (u.getStatus() != null ? u.getStatus().name() : null);
-            return new com.kopi.kopi.dto.EmployeeSimpleDto(userId, fullNameLocal, positionNameLocal, status);
+            return new EmployeeSimpleDto(userId, fullNameLocal, positionNameLocal, status);
         }).collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public com.kopi.kopi.dto.EmployeeDetailDto getEmployeeDetail(Integer userId) {
+    public EmployeeDetailDto getEmployeeDetail(Integer userId) {
         User user = userRepository.findById(userId).orElseThrow();
-        AddressHome addr = addressHomeRepository.findTopByUserUserIdOrderByCreatedAtDesc(userId).orElse(null);
-        String street = addr != null ? addr.getStreet() : null;
+        // Ưu tiên địa chỉ default, nếu không có thì lấy địa chỉ mới nhất
+        var preferredList = userAddressRepository.findPreferredWithAddressByUserId(userId);
+        Address addr = preferredList.isEmpty() ? null : preferredList.get(0).getAddress();
+        String street = addr != null ? addr.getAddressLine() : null;
         String city = addr != null ? addr.getCity() : null;
         String district = addr != null ? addr.getDistrict() : null;
 
-        return new com.kopi.kopi.dto.EmployeeDetailDto(
+        return new EmployeeDetailDto(
                 user.getUserId(),
                 user.getUsername(),
                 user.getEmail(),
@@ -190,7 +203,7 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional
-    public void updateEmployee(Integer userId, com.kopi.kopi.dto.UpdateEmployeeRequest req) {
+    public void updateEmployee(Integer userId, UpdateEmployeeRequest req) {
         User user = userRepository.findById(userId).orElseThrow();
 
         // update role if provided
@@ -231,7 +244,7 @@ public class UserServiceImpl implements IUserService {
         // update status if provided
         if (req.status() != null && !req.status().isBlank()) {
             try {
-                var st = com.kopi.kopi.entity.enums.UserStatus.valueOf(req.status().toUpperCase());
+                var st = UserStatus.valueOf(req.status().toUpperCase());
                 user.setStatus(st);
             } catch (IllegalArgumentException ex) {
                 // ignore invalid status values (could also throw a BadRequest)
@@ -247,7 +260,7 @@ public class UserServiceImpl implements IUserService {
     @Transactional
     public void banUser(Integer userId) {
         User user = userRepository.findById(userId).orElseThrow();
-        user.setStatus(com.kopi.kopi.entity.enums.UserStatus.BANNED);
+        user.setStatus(UserStatus.BANNED);
         userRepository.save(user);
     }
 
@@ -268,16 +281,16 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public org.springframework.data.domain.Page<com.kopi.kopi.dto.CustomerListDto> listCustomers(int page, int size,
+    public Page<CustomerListDto> listCustomers(int page, int size,
             String fullName,
             String phone,
             String email,
             String roleName) {
-        var pageable = org.springframework.data.domain.PageRequest.of(Math.max(0, page), Math.max(1, size));
+        var pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
 
         Specification<User> spec = (root, query, cb) -> {
             query.distinct(true);
-            java.util.List<jakarta.persistence.criteria.Predicate> preds = new java.util.ArrayList<>();
+            List<Predicate> preds = new ArrayList<>();
 
             // exclude admin (role_id == 1)
             var roleJoin = root.join("role", JoinType.LEFT);
@@ -299,11 +312,11 @@ public class UserServiceImpl implements IUserService {
                 preds.add(cb.like(cb.lower(roleJoin.get("name")), "%" + roleName.toLowerCase() + "%"));
             }
 
-            return cb.and(preds.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            return cb.and(preds.toArray(new Predicate[0]));
         };
 
         var usersPage = userRepository.findAll(spec, pageable);
-        return usersPage.map(u -> new com.kopi.kopi.dto.CustomerListDto(
+        return usersPage.map(u -> new CustomerListDto(
                 u.getUserId(),
                 u.getFullName(),
                 (u.getStatus() != null ? u.getStatus().name() : null),
