@@ -18,4 +18,14 @@ public interface UserAddressRepository extends JpaRepository<UserAddress, Intege
            order by ua.defaultAddress desc, ua.createdAt asc
            """)
     List<UserAddress> findAllWithAddressByUserId(@Param("userId") Integer userId);
+
+    // Lấy địa chỉ ưu tiên cho hiển thị: ưu tiên default, nếu không có thì lấy mới nhất
+    @Query("""
+           select ua
+           from UserAddress ua
+           join fetch ua.address a
+           where ua.user.userId = :userId
+           order by ua.defaultAddress desc, ua.createdAt desc
+           """)
+    List<UserAddress> findPreferredWithAddressByUserId(@Param("userId") Integer userId);
 }

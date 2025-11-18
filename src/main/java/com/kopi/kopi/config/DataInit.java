@@ -577,7 +577,7 @@ public class DataInit {
 							.description("Expired 10% off")
 							.discountType(DiscountType.PERCENT)
 							.discountValue(new BigDecimal("10"))
-							// removed shippingFee for events
+							.shippingFee(false)
 							.minOrderAmount(new BigDecimal("100000"))
 							.startsAt(nowDsc.minusDays(10))
 							.endsAt(nowDsc.minusDays(3))
@@ -592,7 +592,7 @@ public class DataInit {
 							.description("Active 15,000 VND off")
 							.discountType(DiscountType.AMOUNT)
 							.discountValue(new BigDecimal("15000"))
-							// removed shippingFee for events
+							.shippingFee(false)
 							.minOrderAmount(new BigDecimal("10000"))
 							.startsAt(nowDsc.minusDays(2))
 							.endsAt(nowDsc.minusDays(2).plusDays(7))
@@ -607,7 +607,7 @@ public class DataInit {
 							.description("Upcoming 20% off")
 							.discountType(DiscountType.PERCENT)
 							.discountValue(new BigDecimal("20"))
-							// removed shippingFee for events
+							.shippingFee(false)
 							.minOrderAmount(new BigDecimal("50000"))
 							.startsAt(nowDsc.plusDays(7))
 							.endsAt(nowDsc.plusDays(14))
