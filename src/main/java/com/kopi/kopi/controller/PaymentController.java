@@ -1,12 +1,16 @@
-package com.kopi.kopi.payment.vnpay;
+package com.kopi.kopi.controller;
 
 import com.kopi.kopi.entity.OrderEntity;
 import com.kopi.kopi.entity.Payment;
 import com.kopi.kopi.entity.enums.PaymentStatus;
-import com.kopi.kopi.payment.payos.PayOSConfig;
-import com.kopi.kopi.payment.payos.PayOSPaymentResponse;
-import com.kopi.kopi.payment.payos.PayOSService;
-import com.kopi.kopi.payment.payos.PayOSUtil;
+import com.kopi.kopi.config.PayOSConfig;
+import com.kopi.kopi.dto.PayOSPaymentResponse;
+import com.kopi.kopi.service.impl.PayOSService;
+import com.kopi.kopi.util.PayOSUtil;
+import com.kopi.kopi.dto.PaymentDTO;
+import com.kopi.kopi.service.impl.PaymentService;
+import com.kopi.kopi.config.VNPAYConfig;
+import com.kopi.kopi.util.VNPayUtil;
 import com.kopi.kopi.repository.OrderRepository;
 import com.kopi.kopi.repository.PaymentRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,16 +37,18 @@ public class PaymentController {
 	private final PaymentRepository paymentRepository;
 	private final PayOSService payOSService;
 	private final PayOSConfig payOSConfig;
+	private final VNPAYConfig vnpayConfig;
 
 	@Value("${app.frontend.url:https://kopi-coffee-fe.vercel.app}")
 	private String frontendUrl;
 
-	public PaymentController(PaymentService paymentService, OrderRepository orderRepository, PaymentRepository paymentRepository, PayOSService payOSService, PayOSConfig payOSConfig) {
+	public PaymentController(PaymentService paymentService, OrderRepository orderRepository, PaymentRepository paymentRepository, PayOSService payOSService, PayOSConfig payOSConfig, VNPAYConfig vnpayConfig) {
 		this.paymentService = paymentService;
 		this.orderRepository = orderRepository;
 		this.paymentRepository = paymentRepository;
 		this.payOSService = payOSService;
 		this.payOSConfig = payOSConfig;
+		this.vnpayConfig = vnpayConfig;
 	}
 
 	@GetMapping("/vn-pay")
@@ -58,44 +64,75 @@ public class PaymentController {
 	@GetMapping("/vn-pay-callback")
 	@Transactional
 	public ResponseEntity<?> vnPayCallback(@RequestParam Map<String, String> params) {
-		String status = params.get("vnp_ResponseCode");
-		String orderInfo = params.get("vnp_OrderInfo");
-		String txnRef = params.get("vnp_TxnRef");
-		Integer orderId = null;
-		if (orderInfo != null && orderInfo.startsWith("ORDER:")) {
-			try {
-				orderId = Integer.valueOf(orderInfo.substring("ORDER:".length()));
-			} catch (Exception ignored) {}
-		}
-		// Determine redirect URL
-		String redirect;
-		if ("00".equals(status) && orderId != null) {
-			// Success: redirect to order detail page
-			redirect = frontendUrl + "/history/" + orderId;
-		} else {
-			// Failed: redirect to history list with error
-			redirect = frontendUrl + "/history?payment=" + ("00".equals(status) ? "success" : "failed");
-			if (orderId != null) {
-				redirect += "&orderId=" + orderId;
+		try {
+			// Verify checksum
+			String receivedHash = params.get("vnp_SecureHash");
+			if (receivedHash == null || receivedHash.isBlank()) {
+				return ResponseEntity.badRequest().body(Map.of("error", "Missing vnp_SecureHash"));
 			}
-		}
-		
-		if ("00".equals(status) && orderId != null) {
-			OrderEntity order = orderRepository.findById(orderId).orElse(null);
-			if (order != null && order.getPayments() != null && !order.getPayments().isEmpty()) {
-				Payment pay = order.getPayments().get(0);
-				pay.setStatus(PaymentStatus.PAID);
-				pay.setPaidAt(LocalDateTime.now());
-				if (txnRef != null && (pay.getTxnRef() == null || !Objects.equals(pay.getTxnRef(), txnRef))) {
-					pay.setTxnRef(txnRef);
+			java.util.Map<String, String> filtered = new java.util.HashMap<>();
+			for (Map.Entry<String, String> e : params.entrySet()) {
+				String k = e.getKey();
+				if (!"vnp_SecureHash".equals(k) && !"vnp_SecureHashType".equals(k)) {
+					filtered.put(k, e.getValue());
 				}
-				paymentRepository.save(pay);
-				order.setStatus("PAID");
-				order.setUpdatedAt(LocalDateTime.now());
-				orderRepository.save(order);
 			}
+			String hashData = VNPayUtil.getPaymentURL(filtered, false);
+			String calcHash = VNPayUtil.hmacSHA512(vnpayConfig.getSecretKey(), hashData);
+			if (calcHash == null || !calcHash.equalsIgnoreCase(receivedHash)) {
+				return ResponseEntity.badRequest().body(Map.of("error", "Invalid checksum"));
+			}
+
+			// Extract and process
+			String responseCode = params.get("vnp_ResponseCode");
+			String transactionStatus = params.getOrDefault("vnp_TransactionStatus", responseCode);
+			String orderInfo = params.get("vnp_OrderInfo");
+			String txnRef = params.get("vnp_TxnRef");
+
+			Integer orderId = null;
+			if (orderInfo != null && orderInfo.startsWith("ORDER:")) {
+				try {
+					orderId = Integer.valueOf(orderInfo.substring("ORDER:".length()));
+				} catch (Exception ignored) {}
+			}
+
+			boolean isSuccess = "00".equals(responseCode) && "00".equals(transactionStatus);
+
+			String redirect;
+			if (isSuccess && orderId != null) {
+				OrderEntity order = orderRepository.findById(orderId).orElse(null);
+				if (order != null && order.getPayments() != null && !order.getPayments().isEmpty()) {
+					Payment pay = order.getPayments().get(0);
+					pay.setStatus(PaymentStatus.PAID);
+					pay.setPaidAt(LocalDateTime.now());
+					if (txnRef != null && (pay.getTxnRef() == null || !Objects.equals(pay.getTxnRef(), txnRef))) {
+						pay.setTxnRef(txnRef);
+					}
+					paymentRepository.save(pay);
+				}
+				redirect = frontendUrl + "/history/" + orderId;
+			} else {
+				redirect = frontendUrl + "/history?payment=" + (isSuccess ? "success" : "failed");
+				if (orderId != null) {
+					redirect += "&orderId=" + orderId;
+					// Delete pre-created order if payment failed and no successful payment exists
+					try {
+						OrderEntity orderToDelete = orderRepository.findById(orderId).orElse(null);
+						if (orderToDelete != null) {
+							boolean hasPaid = orderToDelete.getPayments() != null
+									&& orderToDelete.getPayments().stream().anyMatch(p -> p.getStatus() == PaymentStatus.PAID);
+							if (!hasPaid) {
+								orderRepository.delete(orderToDelete);
+							}
+						}
+					} catch (Exception ignored) {}
+				}
+			}
+
+			return ResponseEntity.status(302).header("Location", redirect).build();
+		} catch (Exception e) {
+			return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
 		}
-		return ResponseEntity.status(302).header("Location", redirect).build();
 	}
 
 	// PayOS endpoints
@@ -158,7 +195,6 @@ public class PaymentController {
 					.findFirst()
 					.orElseThrow(() -> new IllegalArgumentException("Payment not found for orderCode: " + orderCode));
 
-			OrderEntity order = payment.getOrder();
 			System.out.println("PayOS Webhook - Found payment: " + payment.getPaymentId() + ", current status: " + payment.getStatus());
 
 			// Cập nhật trạng thái thanh toán
@@ -168,17 +204,23 @@ public class PaymentController {
 				payment.setPaidAt(LocalDateTime.now());
 				paymentRepository.save(payment);
 
-				// Set order status to PAID (not COMPLETED) so staff can still see and process the order
-				// COMPLETED status is set later when staff confirms order fulfillment
-				order.setStatus("PAID");
-				order.setUpdatedAt(LocalDateTime.now());
-				orderRepository.save(order);
-				System.out.println("PayOS Webhook - Payment updated to PAID, Order updated to PAID");
+				System.out.println("PayOS Webhook - Payment updated to PAID");
 			} else {
 				// Thanh toán thất bại
 				payment.setStatus(PaymentStatus.CANCELLED);
 				paymentRepository.save(payment);
 				System.out.println("PayOS Webhook - Payment updated to CANCELLED");
+				// Delete pre-created order if no successful payment exists
+				try {
+					OrderEntity orderToDelete = payment.getOrder();
+					if (orderToDelete != null) {
+						boolean hasPaid = orderToDelete.getPayments() != null
+								&& orderToDelete.getPayments().stream().anyMatch(p -> p.getStatus() == PaymentStatus.PAID);
+						if (!hasPaid) {
+							orderRepository.delete(orderToDelete);
+						}
+					}
+				} catch (Exception ignored) {}
 			}
 
 			// PayOS yêu cầu trả về format này

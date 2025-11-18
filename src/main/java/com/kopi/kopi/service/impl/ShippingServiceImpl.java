@@ -165,8 +165,9 @@ public class ShippingServiceImpl implements ShippingService {
     private long computeShippingFeeVnd(double distanceMeters) {
         double km = distanceMeters / 1000.0;
         if (km < 1.0) return 0L;
-        if (km <= 3.0) return 30000L;
-        return 50000L;
+        if (km < 3.0) return 10000L;
+        if (km < 5.0) return 20000L;
+        return 30000L;
     }
 }
 

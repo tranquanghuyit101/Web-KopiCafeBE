@@ -115,6 +115,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/apiv1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                        .requestMatchers("/apiv1/payment/vn-pay-callback").permitAll()
                         .requestMatchers("/apiv1/payment/payos/return", "/apiv1/payment/payos/cancel", "/apiv1/payment/payos/webhook").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/apiv1/auth/force-change-password").authenticated()
                         .anyRequest().authenticated()
