@@ -110,15 +110,16 @@ public class ProfileServiceImpl implements ProfileService {
     public ResponseEntity<?> saveDefaultAddress(Integer userId, ProfileController.AddressPayload payload) {
         User u = userRepository.findById(userId).orElseThrow();
 
-        // turn off existing default addresses
-        List<UserAddress> existing = userAddressRepository.findAllWithAddressByUserId(userId);
-        if (existing != null) {
-            for (UserAddress ua : existing) {
-                if (Boolean.TRUE.equals(ua.getDefaultAddress())) {
-                    ua.setDefaultAddress(false);
-                    userAddressRepository.save(ua);
-                }
-            }
+        // If user is not CUSTOMER, enforce single-address policy by removing old addresses
+        boolean isCustomer = u.getRole() != null && "CUSTOMER".equalsIgnoreCase(u.getRole().getName());
+        if (!isCustomer) {
+            // Enforce single address: remove all existing mappings first to satisfy unique index
+            userAddressRepository.deleteByUserId(userId);
+            userAddressRepository.flush();
+        } else {
+            // turn off existing default addresses (multi-address allowed)
+            userAddressRepository.unsetDefaultForUser(userId);
+            userAddressRepository.flush();
         }
 
         String inferredCity = extractCityFromAddressLine(payload.address_line());
@@ -138,7 +139,7 @@ public class ProfileServiceImpl implements ProfileService {
         UserAddress ua = UserAddress.builder()
                 .user(u)
                 .address(a)
-                .defaultAddress(true)
+                .defaultAddress(true) // always default for this endpoint
                 .createdAt(LocalDateTime.now())
                 .build();
         userAddressRepository.save(ua);
@@ -174,16 +175,17 @@ public class ProfileServiceImpl implements ProfileService {
     public ResponseEntity<?> createAddress(Integer userId, ProfileController.AddressPayload payload, boolean setDefault) {
         User u = userRepository.findById(userId).orElseThrow();
 
-        if (setDefault) {
-            List<UserAddress> existing = userAddressRepository.findAllWithAddressByUserId(userId);
-            if (existing != null) {
-                for (UserAddress ua : existing) {
-                    if (Boolean.TRUE.equals(ua.getDefaultAddress())) {
-                        ua.setDefaultAddress(false);
-                        userAddressRepository.save(ua);
-                    }
-                }
-            }
+        boolean isCustomer = u.getRole() != null && "CUSTOMER".equalsIgnoreCase(u.getRole().getName());
+        if (!isCustomer) {
+            // Enforce single address: delete all existing mappings to avoid duplicate default constraint
+            userAddressRepository.deleteByUserId(userId);
+            userAddressRepository.flush();
+            // Force default for the newly created address
+            setDefault = true;
+        } else if (setDefault) {
+            // Customer adding a default address -> unset current default
+            userAddressRepository.unsetDefaultForUser(userId);
+            userAddressRepository.flush();
         }
 
         String inferredCity = extractCityFromAddressLine(payload.address_line());
