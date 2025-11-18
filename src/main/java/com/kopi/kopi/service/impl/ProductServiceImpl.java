@@ -18,6 +18,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 @Service
 public class ProductServiceImpl implements ProductService {
@@ -63,6 +65,27 @@ public class ProductServiceImpl implements ProductService {
                 return null;
             }
         }
+    }
+
+    private String generateSku(Category category, String productName) {
+        String catName = category != null ? category.getName() : null;
+        String prefix = "XX";
+        if (catName != null) {
+            prefix = switch (catName) {
+                case "Coffee" -> "CF";
+                case "Milk Tea" -> "MT";
+                case "Juice" -> "JC";
+                case "Ice Blended" -> "IB";
+                case "Yogurt" -> "YG";
+                case "Others" -> "OT";
+                case "Food" -> "FD";
+                case "Cake" -> "CK";
+                case "Soft Drink" -> "SD";
+                default -> "XX";
+            };
+        }
+        String normalized = productName == null ? "" : productName.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        return prefix + "-" + normalized;
     }
 
     @Override
@@ -192,7 +215,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ResponseEntity<?> create(org.springframework.web.multipart.MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price) {
+    public ResponseEntity<?> create(MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price, Integer stockQty) {
         Category category = categoryRepository.findById(categoryId).orElseThrow();
         Product p = new Product();
         p.setName(name);
@@ -202,11 +225,19 @@ public class ProductServiceImpl implements ProductService {
             p.setImgUrl(imgUrl);
         }
         p.setDescription(desc);
+        // Auto-generate SKU based on category + product name
+        try {
+            p.setSku(generateSku(category, name));
+        } catch (Exception ignored) {}
         // Set required defaults for non-nullable columns
         if (p.getAvailable() == null) p.setAvailable(true);
-        if (p.getStockQty() == null) p.setStockQty(0);
-        if (p.getCreatedAt() == null) p.setCreatedAt(java.time.LocalDateTime.now());
-        if (p.getUpdatedAt() == null) p.setUpdatedAt(java.time.LocalDateTime.now());
+        if (stockQty != null) {
+            p.setStockQty(Math.max(stockQty, 0));
+        } else if (p.getStockQty() == null) {
+            p.setStockQty(0);
+        }
+        if (p.getCreatedAt() == null) p.setCreatedAt(LocalDateTime.now());
+        if (p.getUpdatedAt() == null) p.setUpdatedAt(LocalDateTime.now());
         productRepository.save(p);
 
         Map<String, Object> item = new HashMap<>();
@@ -214,6 +245,7 @@ public class ProductServiceImpl implements ProductService {
         item.put("name", p.getName());
         item.put("img", p.getImgUrl());
         item.put("price", p.getPrice());
+        item.put("stock", p.getStockQty());
         item.put("desc", p.getDescription());
         item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
         return ResponseEntity.ok(Map.of("data", List.of(item)));
@@ -221,7 +253,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ResponseEntity<?> update(Integer id, org.springframework.web.multipart.MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price) {
+    public ResponseEntity<?> update(Integer id, MultipartFile image, String imgUrl, String name, Integer categoryId, String desc, BigDecimal price, Integer stockQty) {
         Product p = productRepository.findById(id).orElseThrow();
         if (name != null && !name.isBlank()) {
             p.setName(name);
@@ -233,6 +265,9 @@ public class ProductServiceImpl implements ProductService {
         if (price != null) {
             p.setPrice(price);
         }
+        if (stockQty != null) {
+            p.setStockQty(Math.max(stockQty, 0));
+        }
         if (imgUrl != null && !imgUrl.isBlank()) {
             p.setImgUrl(imgUrl);
         }
@@ -244,6 +279,7 @@ public class ProductServiceImpl implements ProductService {
         item.put("name", p.getName());
         item.put("img", p.getImgUrl());
         item.put("price", p.getPrice());
+        item.put("stock", p.getStockQty());
         item.put("desc", p.getDescription());
         item.put("category_id", p.getCategory() != null ? p.getCategory().getCategoryId() : null);
         return ResponseEntity.ok(Map.of("data", List.of(item)));
