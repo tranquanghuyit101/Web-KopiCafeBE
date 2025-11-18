@@ -215,12 +215,19 @@ public class ReportServiceImpl implements ReportService {
             WHERE (is_available = 1 OR is_available IS NULL)
         """);
 
-        int activePromos = safeCount("""
+        int activeEventCount = safeCount("""
             SELECT COUNT(1) FROM dbo.discount_events
             WHERE is_active = 1
-              AND (starts_at IS NULL OR starts_at <= SYSDATETIME())
-              AND (ends_at   IS NULL OR ends_at   >= SYSDATETIME())
+            AND (starts_at IS NULL OR starts_at <= SYSDATETIME())
+            AND (ends_at   IS NULL OR ends_at   >= SYSDATETIME())
         """);
+        int activeCodeCount  = safeCount("""
+            SELECT COUNT(1) FROM dbo.discount_codes
+            WHERE is_active = 1
+            AND (starts_at IS NULL OR starts_at <= SYSDATETIME())
+            AND (ends_at   IS NULL OR ends_at   >= SYSDATETIME())
+        """);
+        int activePromos = activeEventCount + activeCodeCount;
 
         int pendingOrders = safeCount("""
             SELECT COUNT(1) FROM dbo.orders WHERE status = 'pending'
