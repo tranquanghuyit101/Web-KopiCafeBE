@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
@@ -186,8 +187,24 @@ public class ChatServiceImpl implements IChatService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                    url, new HttpEntity<>(body, headers), String.class);
+            ResponseEntity<String> response;
+            try {
+                response = restTemplate.postForEntity(
+                        url, new HttpEntity<>(body, headers), String.class);
+            } catch (HttpClientErrorException e) {
+                // Xử lý lỗi 429 (Quota Exceeded)
+                if (e.getStatusCode().value() == 429) {
+                    System.err.println("⚠️ Gemini API Quota Exceeded (429). Using fallback intent analysis.");
+                    System.err.println("Error details: " + e.getResponseBodyAsString());
+                    return fallbackIntent(message);
+                }
+                // Các lỗi HTTP khác
+                System.err.println("Gemini API HTTP Error: " + e.getStatusCode() + " - " + e.getMessage());
+                return fallbackIntent(message);
+            } catch (Exception e) {
+                System.err.println("Gemini API Exception: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                return fallbackIntent(message);
+            }
 
             if (response.getStatusCode().isError() || response.getBody() == null) {
                 return fallbackIntent(message);
@@ -197,7 +214,16 @@ public class ChatServiceImpl implements IChatService {
 
             // Kiểm tra lỗi từ API
             if (root.has("error")) {
-                System.err.println("Gemini API Error: " + root.path("error").toString());
+                JsonNode errorNode = root.path("error");
+                int errorCode = errorNode.path("code").asInt(0);
+                String errorMessage = errorNode.path("message").asText("");
+                
+                if (errorCode == 429) {
+                    System.err.println("⚠️ Gemini API Quota Exceeded (429) in response body.");
+                    System.err.println("Error message: " + errorMessage);
+                } else {
+                    System.err.println("Gemini API Error: " + errorNode.toString());
+                }
                 return fallbackIntent(message);
             }
 
@@ -695,7 +721,7 @@ public class ChatServiceImpl implements IChatService {
         Map<String, Object> products = productService.list(null, null, null, null, 50, 1);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> productList = (List<Map<String, Object>>) products.get("data");
-        return showProductList(productList, "📋 Menu sản phẩm:\n\n");
+        return showProductList(productList, "Menu sản phẩm:\n\n");
     }
 
     private ChatResponse showProductList(List<Map<String, Object>> productList, String header) {
@@ -707,7 +733,7 @@ public class ChatServiceImpl implements IChatService {
                     formatPrice(price),
                     p.get("stock") != null ? p.get("stock") : 0));
         }
-        response.append("\nBạn muốn đặt món nào? 😊");
+        response.append("\nBạn muốn đặt món nào?");
 
         return ChatResponse.builder()
                 .message(response.toString())
@@ -722,7 +748,7 @@ public class ChatServiceImpl implements IChatService {
 
     private ChatResponse askQuantity(Map<String, Object> product) {
         String productName = extractProductDisplayName(product);
-        String message = String.format("Bạn muốn đặt bao nhiêu %s? 😊\n\n" +
+        String message = String.format("Bạn muốn đặt bao nhiêu %s?\n\n" +
                 "Ví dụ: \"2 cốc\" hoặc \"3\"", productName);
 
         Map<String, Object> context = new HashMap<>();
@@ -802,10 +828,10 @@ public class ChatServiceImpl implements IChatService {
                 int qty = parseResult.quantity != null ? parseResult.quantity : 1;
                 String productName = parseResult.productName != null ? parseResult.productName :
                         extractProductDisplayName(product);
-                String message = String.format("✅ Đã thêm vào giỏ hàng:\n\n" +
-                                "📦 %s x%d\n" +
-                                "💰 Tạm tính: %s VNĐ\n\n" +
-                                "💡 Vui lòng nhập địa chỉ giao hàng và số điện thoại ở trang giỏ hàng trước khi thanh toán nhé.",
+                String message = String.format("Đã thêm vào giỏ hàng:\n\n" +
+                                "%s x%d\n" +
+                                "Tạm tính: %s VNĐ\n\n" +
+                                "Vui lòng nhập địa chỉ giao hàng và số điện thoại ở trang giỏ hàng trước khi thanh toán nhé.",
                         parseResult.productName != null ? parseResult.productName : "Sản phẩm",
                         qty,
                         formatPrice(price.multiply(java.math.BigDecimal.valueOf(qty))));
@@ -859,7 +885,7 @@ public class ChatServiceImpl implements IChatService {
 
     private ChatResponse askTableNumber(Map<String, Object> product, Integer quantity) {
         String productName = extractProductDisplayName(product);
-        String message = String.format("Bạn đang ngồi ở bàn số mấy? 🪑\n\n" +
+        String message = String.format("Bạn đang ngồi ở bàn số mấy?\n\n" +
                 "Ví dụ: \"Bàn 1\" hoặc \"Bàn 5\"");
 
         Map<String, Object> context = new HashMap<>();
@@ -884,7 +910,7 @@ public class ChatServiceImpl implements IChatService {
 
     private ChatResponse askAddress(Map<String, Object> product, Integer quantity) {
         String productName = extractProductDisplayName(product);
-        String message = String.format("Vui lòng cung cấp địa chỉ giao hàng 📍\n\n" +
+        String message = String.format("Vui lòng cung cấp địa chỉ giao hàng\n\n" +
                 "Ví dụ: \"123 đường ABC, Quận XYZ, Đà Nẵng\"");
 
         Map<String, Object> context = new HashMap<>();
@@ -937,11 +963,11 @@ public class ChatServiceImpl implements IChatService {
                 int qty = parseResult.quantity != null ? parseResult.quantity : 1;
                 java.math.BigDecimal total = price.multiply(java.math.BigDecimal.valueOf(qty));
 
-                String message = String.format("✅ Đơn hàng đã được tạo thành công!\n\n" +
-                        "📦 Món: %s x%d\n" +
-                        "🪑 Bàn: %d\n" +
-                        "💰 Tổng tiền: %s VNĐ\n\n" +
-                        "Vui lòng thanh toán tại quầy. Cảm ơn bạn! 😊",
+                String message = String.format("Đơn hàng đã được tạo thành công!\n\n" +
+                        "Món: %s x%d\n" +
+                        "Bàn: %d\n" +
+                        "Tổng tiền: %s VNĐ\n\n" +
+                        "Vui lòng thanh toán tại quầy. Cảm ơn bạn!",
                         parseResult.productName != null ? parseResult.productName : "Sản phẩm",
                         qty,
                         tableNumber != null ? tableNumber : parseResult.tableNumber,
@@ -1032,17 +1058,17 @@ public class ChatServiceImpl implements IChatService {
 
             if (revenueData != null && !revenueData.isEmpty()) {
                 // Xác định tiêu đề dựa trên khoảng thời gian
-                String title = "📊 Báo cáo doanh thu";
+                String title = "Báo cáo doanh thu";
                 if (lowerMessage.contains("hôm nay") || lowerMessage.contains("today")) {
-                    title = "📊 Doanh thu hôm nay";
+                    title = "Doanh thu hôm nay";
                 } else if (lowerMessage.contains("hôm qua") || lowerMessage.contains("yesterday")) {
-                    title = "📊 Doanh thu hôm qua";
+                    title = "Doanh thu hôm qua";
                 } else if (lowerMessage.contains("ngày") || lowerMessage.contains("day")) {
-                    title = "📊 Doanh thu theo ngày (7 ngày gần nhất)";
+                    title = "Doanh thu theo ngày (7 ngày gần nhất)";
                 } else if (lowerMessage.contains("tháng") || lowerMessage.contains("month")) {
-                    title = "📊 Doanh thu theo tháng (6 tháng gần nhất)";
+                    title = "Doanh thu theo tháng (6 tháng gần nhất)";
                 } else if (lowerMessage.contains("năm") || lowerMessage.contains("year")) {
-                    title = "📊 Doanh thu theo năm (6 năm gần nhất)";
+                    title = "Doanh thu theo năm (6 năm gần nhất)";
                 }
 
                 StringBuilder response = new StringBuilder(title + ":\n\n");
@@ -1097,7 +1123,7 @@ public class ChatServiceImpl implements IChatService {
                     reportService.revenue(ReportService.Granularity.daily, today, today, 1);
 
             if (revenueData != null && !revenueData.isEmpty()) {
-                StringBuilder response = new StringBuilder("📊 Doanh thu hôm nay:\n\n");
+                StringBuilder response = new StringBuilder("Doanh thu hôm nay:\n\n");
                 double total = 0;
                 int totalOrders = 0;
 
@@ -1168,17 +1194,17 @@ public class ChatServiceImpl implements IChatService {
                 }
 
                 if (showLowStockOnly) {
-                    response.append("⚠️ Danh sách sản phẩm sắp hết hàng (< 10):\n\n");
+                    response.append("Danh sách sản phẩm sắp hết hàng (< 10):\n\n");
                 } else {
-                    response.append("📦 Danh sách tồn kho sản phẩm:\n\n");
+                    response.append("Danh sách tồn kho sản phẩm:\n\n");
                 }
 
                 if (filteredList.isEmpty()) {
-                    response.append("✅ Không có sản phẩm nào sắp hết hàng. Tất cả sản phẩm đều đủ số lượng!\n");
+                    response.append("Không có sản phẩm nào sắp hết hàng. Tất cả sản phẩm đều đủ số lượng!\n");
                 } else {
                     for (Map<String, Object> p : filteredList) {
                         Integer stock = (Integer) p.get("stock");
-                        String stockStatus = stock != null && stock < 10 ? "⚠️" : "✅";
+                        String stockStatus = stock != null && stock < 10 ? "•" : "•";
 
                         response.append(String.format("%s %s - Còn: %d sản phẩm\n",
                                 stockStatus,
@@ -1188,12 +1214,12 @@ public class ChatServiceImpl implements IChatService {
                 }
 
                 if (!showLowStockOnly && lowStockCount > 0) {
-                    response.append(String.format("\n⚠️ Cảnh báo: %d/%d sản phẩm sắp hết hàng (< 10)",
+                    response.append(String.format("\nCảnh báo: %d/%d sản phẩm sắp hết hàng (< 10)",
                             lowStockCount, totalProducts));
                 }
 
                 if (showLowStockOnly && lowStockCount == 0) {
-                    response.append("\n✅ Tất cả sản phẩm đều đủ số lượng!");
+                    response.append("\nTất cả sản phẩm đều đủ số lượng!");
                 }
 
                 return ChatResponse.builder()
@@ -1230,12 +1256,12 @@ public class ChatServiceImpl implements IChatService {
         if (lower.contains("xin chào") || lower.contains("hello") || lower.contains("hi") ||
             lower.contains("chào") || lower.contains("hey")) {
             return ChatResponse.builder()
-                    .message("Xin chào! 👋 Tôi là trợ lý ảo của Kopi Coffee & Workspace. Tôi có thể giúp bạn:\n\n" +
-                            "✨ Xem và đặt hàng sản phẩm\n" +
-                            "📋 Xem danh sách sản phẩm\n" +
-                            (userRole.equals("ADMIN") ? "📊 Kiểm tra tồn kho\n💰 Xem báo cáo doanh thu\n" : "") +
-                            "💬 Trả lời các câu hỏi\n\n" +
-                            "Bạn cần tôi giúp gì hôm nay? 😊")
+                    .message("Xin chào! Tôi là trợ lý ảo của Kopi Coffee & Workspace. Tôi có thể giúp bạn:\n\n" +
+                            "• Xem và đặt hàng sản phẩm\n" +
+                            "• Xem danh sách sản phẩm\n" +
+                            (userRole.equals("ADMIN") ? "• Kiểm tra tồn kho\n• Xem báo cáo doanh thu\n" : "") +
+                            "• Trả lời các câu hỏi\n\n" +
+                            "Bạn cần tôi giúp gì hôm nay?")
                     .intent("general")
                     .suggestions(getDefaultSuggestions(userRole))
                     .build();
@@ -1244,9 +1270,9 @@ public class ChatServiceImpl implements IChatService {
         // Xử lý câu hỏi về giờ mở cửa
         if (lower.contains("giờ") && (lower.contains("mở") || lower.contains("đóng") || lower.contains("hoạt động"))) {
             return ChatResponse.builder()
-                    .message("⏰ Kopi Coffee & Workspace mở cửa:\n\n" +
-                            "🕐 Thứ 2 - Chủ nhật: 7:00 - 22:00\n\n" +
-                            "Bạn có muốn đặt chỗ trước không? 😊")
+                    .message("Kopi Coffee & Workspace mở cửa:\n\n" +
+                            "Thứ 2 - Chủ nhật: 7:00 - 22:00\n\n" +
+                            "Bạn có muốn đặt chỗ trước không?")
                     .intent("general")
                     .suggestions(getDefaultSuggestions(userRole))
                     .build();
@@ -1256,10 +1282,10 @@ public class ChatServiceImpl implements IChatService {
         if (lower.contains("địa chỉ") || lower.contains("ở đâu") || lower.contains("location") ||
             lower.contains("address")) {
             return ChatResponse.builder()
-                    .message("📍 Địa chỉ của chúng tôi:\n\n" +
-                            "🏪 Kopi Coffee & Workspace\n" +
+                    .message("Địa chỉ của chúng tôi:\n\n" +
+                            "Kopi Coffee & Workspace\n" +
                             "38 đường Phạm Văn Đồng, An Hải Bắc, Sơn Trà, Đà Nẵng 550000\n\n" +
-                            "Bạn có thể xem bản đồ trên trang web hoặc đặt hàng online nhé! 😊")
+                            "Bạn có thể xem bản đồ trên trang web hoặc đặt hàng online nhé!")
                     .intent("general")
                     .suggestions(getDefaultSuggestions(userRole))
                     .build();
@@ -1289,10 +1315,25 @@ public class ChatServiceImpl implements IChatService {
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
 
-                ResponseEntity<String> response = restTemplate.postForEntity(
-                        url, new HttpEntity<>(body, headers), String.class);
+                ResponseEntity<String> response = null;
+                try {
+                    response = restTemplate.postForEntity(
+                            url, new HttpEntity<>(body, headers), String.class);
+                } catch (HttpClientErrorException e) {
+                    // Xử lý lỗi 429 (Quota Exceeded)
+                    if (e.getStatusCode().value() == 429) {
+                        System.err.println("⚠️ Gemini API Quota Exceeded (429) in handleGeneralIntent. Using fallback response.");
+                        // Tiếp tục với fallback message bên dưới
+                    } else {
+                        System.err.println("Gemini API HTTP Error: " + e.getStatusCode() + " - " + e.getMessage());
+                    }
+                    response = null; // Đảm bảo response = null để skip xử lý
+                } catch (Exception e) {
+                    System.err.println("Gemini API Exception in handleGeneralIntent: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                    response = null; // Đảm bảo response = null để skip xử lý
+                }
 
-                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                if (response != null && response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                     JsonNode root = objectMapper.readTree(response.getBody());
                     if (!root.has("error")) {
                         String reply = root.path("candidates").path(0).path("content").path(0).path("parts")
@@ -1305,10 +1346,17 @@ public class ChatServiceImpl implements IChatService {
                                     .suggestions(getDefaultSuggestions(userRole))
                                     .build();
                         }
+                    } else {
+                        JsonNode errorNode = root.path("error");
+                        int errorCode = errorNode.path("code").asInt(0);
+                        if (errorCode == 429) {
+                            System.err.println("⚠️ Gemini API Quota Exceeded (429) in response body. Using fallback response.");
+                        }
                     }
                 }
             } catch (Exception e) {
                 // Nếu Gemini fail, tiếp tục với fallback
+                System.err.println("Exception in handleGeneralIntent Gemini call: " + e.getClass().getSimpleName() + " - " + e.getMessage());
             }
         }
 
@@ -1316,11 +1364,11 @@ public class ChatServiceImpl implements IChatService {
         return ChatResponse.builder()
                 .message("Tôi hiểu bạn đang hỏi về \"" + message + "\". " +
                         "Hiện tại tôi có thể giúp bạn:\n\n" +
-                        "✨ Xem và đặt hàng sản phẩm\n" +
-                        "📋 Xem danh sách sản phẩm\n" +
-                        (userRole.equals("ADMIN") ? "📊 Kiểm tra tồn kho\n💰 Xem báo cáo doanh thu\n" : "") +
-                        "💬 Trả lời các câu hỏi\n\n" +
-                        "Bạn muốn tôi giúp gì cụ thể hơn không? 😊")
+                        "• Xem và đặt hàng sản phẩm\n" +
+                        "• Xem danh sách sản phẩm\n" +
+                        (userRole.equals("ADMIN") ? "• Kiểm tra tồn kho\n• Xem báo cáo doanh thu\n" : "") +
+                        "• Trả lời các câu hỏi\n\n" +
+                        "Bạn muốn tôi giúp gì cụ thể hơn không?")
                 .intent("general")
                 .suggestions(getDefaultSuggestions(userRole))
                 .build();
