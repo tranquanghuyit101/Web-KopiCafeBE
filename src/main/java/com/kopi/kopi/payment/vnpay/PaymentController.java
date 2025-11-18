@@ -67,10 +67,19 @@ public class PaymentController {
 				orderId = Integer.valueOf(orderInfo.substring("ORDER:".length()));
 			} catch (Exception ignored) {}
 		}
-		String redirect = frontendUrl + "/history?payment=" + ("00".equals(status) ? "success" : "failed");
-		if (orderId != null) {
-			redirect += "&orderId=" + orderId;
+		// Determine redirect URL
+		String redirect;
+		if ("00".equals(status) && orderId != null) {
+			// Success: redirect to order detail page
+			redirect = frontendUrl + "/history/" + orderId;
+		} else {
+			// Failed: redirect to history list with error
+			redirect = frontendUrl + "/history?payment=" + ("00".equals(status) ? "success" : "failed");
+			if (orderId != null) {
+				redirect += "&orderId=" + orderId;
+			}
 		}
+		
 		if ("00".equals(status) && orderId != null) {
 			OrderEntity order = orderRepository.findById(orderId).orElse(null);
 			if (order != null && order.getPayments() != null && !order.getPayments().isEmpty()) {
@@ -192,13 +201,14 @@ public class PaymentController {
 			
 			String orderCodeStr = params.get("orderCode");
 			boolean isSuccess = false;
+			Optional<Payment> paymentOpt = Optional.empty();
 			
 			// Tìm payment từ orderCode và kiểm tra status từ database
 			if (orderCodeStr != null) {
 				try {
 					Integer orderCode = Integer.parseInt(orderCodeStr);
 					String txnRefPrefix = "ORD-" + orderCode + "-";
-					Optional<Payment> paymentOpt = paymentRepository.findAll().stream()
+					paymentOpt = paymentRepository.findAll().stream()
 							.filter(p -> p.getTxnRef() != null && p.getTxnRef().startsWith(txnRefPrefix))
 							.findFirst();
 					
@@ -229,11 +239,40 @@ public class PaymentController {
 				isSuccess = true;
 			}
 
+			// Get orderId from payment for redirect
+			Integer orderIdForRedirect = null;
+			if (paymentOpt.isPresent()) {
+				Payment payment = paymentOpt.get();
+				if (payment.getOrder() != null) {
+					orderIdForRedirect = payment.getOrder().getOrderId();
+					System.out.println("PayOS Return: Found orderId from payment.order: " + orderIdForRedirect);
+				} else {
+					// Fallback: extract orderId from txnRef format "ORD-{orderCode}-{orderId}"
+					String txnRef = payment.getTxnRef();
+					if (txnRef != null && txnRef.contains("-")) {
+						try {
+							String[] parts = txnRef.split("-");
+							if (parts.length >= 3) {
+								orderIdForRedirect = Integer.parseInt(parts[2]);
+								System.out.println("PayOS Return: Found orderId from txnRef: " + orderIdForRedirect);
+							}
+						} catch (Exception ignored) {}
+					}
+				}
+			}
+
 			if (isSuccess) {
-				// Thanh toán thành công → redirect về trang chủ
-				return ResponseEntity.status(302)
-						.header("Location", frontendUrl + "/")
-						.build();
+				// Thanh toán thành công → redirect đến trang order detail
+				if (orderIdForRedirect != null) {
+					return ResponseEntity.status(302)
+							.header("Location", frontendUrl + "/history/" + orderIdForRedirect)
+							.build();
+				} else {
+					// Fallback: redirect về trang chủ nếu không tìm thấy orderId
+					return ResponseEntity.status(302)
+							.header("Location", frontendUrl + "/")
+							.build();
+				}
 			} else {
 				// Thanh toán thất bại → redirect về trang chủ với thông báo lỗi
 				return ResponseEntity.status(302)

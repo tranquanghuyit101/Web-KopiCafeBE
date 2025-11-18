@@ -232,8 +232,8 @@ public class NotificationController {
             // Thêm redirect URL dựa trên role và order type
             String redirectUrl = null;
             if ("CUSTOMER".equalsIgnoreCase(userRole)) {
-                // Customer redirect về history
-                redirectUrl = "/history";
+                // Customer redirect về order detail page (tracking page) để xem chi tiết và tracking
+                redirectUrl = "/history/" + n.getOrder().getOrderId();
             } else if (orderType != null) {
                 // Staff redirect về shipping hoặc table order
                 if ("SHIPPING".equals(orderType)) {
