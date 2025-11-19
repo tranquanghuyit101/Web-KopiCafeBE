@@ -1,4 +1,4 @@
-package com.kopi.kopi.payment.payos;
+package com.kopi.kopi.dto;
 
 import lombok.Builder;
 import lombok.Data;

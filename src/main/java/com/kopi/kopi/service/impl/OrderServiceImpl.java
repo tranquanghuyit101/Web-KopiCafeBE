@@ -172,6 +172,8 @@ public class OrderServiceImpl implements OrderService {
         detail.put("id", o.getOrderId());
         detail.put("receiver_email", "");
         detail.put("receiver_name", o.getCustomer() != null ? o.getCustomer().getFullName() : "");
+        // Include customer phone for frontend display on shipping/history pages
+        detail.put("phone_number", o.getCustomer() != null ? o.getCustomer().getPhone() : null);
         detail.put("delivery_address", o.getAddress() != null ? o.getAddress().getAddressLine() : "");
         detail.put("notes", o.getNote());
         detail.put("status_id", 0);
@@ -243,6 +245,15 @@ public class OrderServiceImpl implements OrderService {
             m.put("id", o.getOrderId());
             m.put("status", o.getStatus());
             m.put("address", o.getAddress() != null ? o.getAddress().getAddressLine() : null);
+			// Include payment method and status for UI decisions (e.g., shipper button label)
+			if (o.getPayments() != null && !o.getPayments().isEmpty()) {
+				Payment p = o.getPayments().get(0);
+				m.put("payment_method", p.getMethod() != null ? p.getMethod().name() : null);
+				m.put("payment_status", p.getStatus() != null ? p.getStatus().name() : null);
+			} else {
+				m.put("payment_method", null);
+				m.put("payment_status", null);
+			}
             m.put("created_at", o.getCreatedAt());
             m.put("table_number", o.getTable() != null ? o.getTable().getNumber() : null);
             m.put("total", defaultBigDecimal(o.getTotalAmount()));
@@ -516,8 +527,9 @@ public class OrderServiceImpl implements OrderService {
             }
             double km = meters / 1000.0;
             if (km < 1.0) shippingFee = BigDecimal.ZERO;
-            else if (km <= 3.0) shippingFee = new BigDecimal("30000");
-            else shippingFee = new BigDecimal("50000");
+            else if (km < 3.0) shippingFee = new BigDecimal("10000");
+            else if (km < 5.0) shippingFee = new BigDecimal("20000");
+            else shippingFee = new BigDecimal("30000");
         }
 
         // Discount: prefer validating discount_code; fallback to provided discount_amount (validated)

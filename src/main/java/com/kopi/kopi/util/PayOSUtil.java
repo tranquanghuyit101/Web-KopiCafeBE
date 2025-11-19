@@ -1,4 +1,4 @@
-package com.kopi.kopi.payment.payos;
+package com.kopi.kopi.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 

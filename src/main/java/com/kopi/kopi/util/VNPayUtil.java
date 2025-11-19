@@ -1,4 +1,4 @@
-package com.kopi.kopi.payment.vnpay;
+package com.kopi.kopi.util;
 
 import jakarta.servlet.http.HttpServletRequest;
 

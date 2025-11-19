@@ -1,4 +1,4 @@
-package com.kopi.kopi.payment.payos;
+package com.kopi.kopi.config;
 
 import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
