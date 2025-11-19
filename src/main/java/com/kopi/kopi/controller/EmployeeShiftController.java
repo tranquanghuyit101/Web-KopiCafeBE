@@ -4,6 +4,7 @@ import com.kopi.kopi.repository.EmployeeShiftRepository;
 import com.kopi.kopi.service.EmployeeShiftService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -65,6 +66,7 @@ public class EmployeeShiftController {
         }
     }
 
+    @Transactional(readOnly = true)
     @GetMapping("/apiv1/employee-shifts")
     public ResponseEntity<java.util.List<Map<String, Object>>> listByDate(
             @org.springframework.web.bind.annotation.RequestParam String date,
@@ -143,6 +145,7 @@ public class EmployeeShiftController {
      * - end (YYYY-MM-DD) required
      * - shiftId (optional) to filter by shift template
      */
+    @Transactional(readOnly = true)
     @GetMapping("/apiv1/employee-shifts/range")
     public ResponseEntity<java.util.List<Map<String, Object>>> listByRange(
             @org.springframework.web.bind.annotation.RequestParam String start,
