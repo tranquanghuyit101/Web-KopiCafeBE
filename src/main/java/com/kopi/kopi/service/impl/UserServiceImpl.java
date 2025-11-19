@@ -64,7 +64,9 @@ public class UserServiceImpl implements IUserService {
         this.roleRepository = roleRepository;
         this.positionRepository = positionRepository;
     }
-// Constructor cũ của Võ Nhật Duy, lấy lại tất cả field cũ đã khai báo từ contructor mở rộng
+
+    // Constructor cũ của Võ Nhật Duy, lấy lại tất cả field cũ đã khai báo từ
+    // contructor mở rộng
     public UserServiceImpl(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
@@ -78,7 +80,8 @@ public class UserServiceImpl implements IUserService {
     @Transactional
     public void resetPassword(String email) {
         Optional<User> userOpt = userRepository.findByEmail(email);
-        if (userOpt.isEmpty()) return;
+        if (userOpt.isEmpty())
+            return;
 
         User user = userOpt.get();
         String tmp = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
@@ -93,8 +96,7 @@ public class UserServiceImpl implements IUserService {
                     user.getEmail(),
                     "[Kopi] Your temporary password",
                     "Hi " + user.getFullName() + ",\n\nYour temporary password is: " + tmp +
-                            "\nPlease log in and change it immediately."
-            );
+                            "\nPlease log in and change it immediately.");
         } catch (Exception ex) {
             LoggerFactory.getLogger(getClass())
                     .warn("Send mail failed for {}: {}", user.getEmail(), ex.getMessage());
@@ -285,7 +287,8 @@ public class UserServiceImpl implements IUserService {
             String fullName,
             String phone,
             String email,
-            String roleName) {
+            String roleName,
+            String status) {
         var pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
 
         Specification<User> spec = (root, query, cb) -> {
@@ -296,8 +299,20 @@ public class UserServiceImpl implements IUserService {
             var roleJoin = root.join("role", JoinType.LEFT);
             preds.add(cb.notEqual(roleJoin.get("roleId"), 1));
 
-            // exclude BANNED users
-            preds.add(cb.notEqual(root.get("status"), UserStatus.BANNED));
+            // apply status filter if provided. If status == 'BANNED', return only banned
+            // users.
+            if (status != null && !status.isBlank()) {
+                try {
+                    var st = UserStatus.valueOf(status.toUpperCase());
+                    preds.add(cb.equal(root.get("status"), st));
+                } catch (IllegalArgumentException ex) {
+                    // invalid status value - ignore and continue (no extra predicate)
+                    log.warn("Invalid status filter provided: {}", status);
+                }
+            } else {
+                // default behaviour: exclude BANNED users
+                preds.add(cb.notEqual(root.get("status"), UserStatus.BANNED));
+            }
 
             if (fullName != null && !fullName.isBlank()) {
                 preds.add(cb.like(cb.lower(root.get("fullName")), "%" + fullName.toLowerCase() + "%"));
