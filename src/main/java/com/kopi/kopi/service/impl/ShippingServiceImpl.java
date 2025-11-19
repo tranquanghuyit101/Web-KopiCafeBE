@@ -49,6 +49,14 @@ public class ShippingServiceImpl implements ShippingService {
         Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
         if (orderOpt.isEmpty()) return ResponseEntity.status(404).body(Map.of("message", "Order not found"));
         OrderEntity order = orderOpt.get();
+        // Disallow viewing for finalized/cancelled orders
+        String status = order.getStatus();
+        if (status != null) {
+            String s = status.trim().toUpperCase();
+            if (s.equals("COMPLETED") || s.equals("CANCELLED") || s.equals("REJECTED")) {
+                return ResponseEntity.status(403).body(Map.of("message", "Order is not available for shipping view"));
+            }
+        }
         Integer customerId = order.getCustomer() != null ? order.getCustomer().getUserId() : null;
         Integer shipperId = order.getShipper() != null ? order.getShipper().getUserId() : null;
         boolean isAllowed = (customerId != null && customerId.equals(userId)) || (shipperId != null && shipperId.equals(userId));
@@ -66,6 +74,14 @@ public class ShippingServiceImpl implements ShippingService {
         Optional<OrderEntity> orderOpt = orderRepository.findById(orderId);
         if (orderOpt.isEmpty()) return ResponseEntity.status(404).body(Map.of("message", "Order not found"));
         OrderEntity o = orderOpt.get();
+        // Disallow viewing for finalized/cancelled orders
+        String status = o.getStatus();
+        if (status != null) {
+            String s = status.trim().toUpperCase();
+            if (s.equals("COMPLETED") || s.equals("CANCELLED") || s.equals("REJECTED")) {
+                return ResponseEntity.status(403).body(Map.of("message", "Order is not available for shipping view"));
+            }
+        }
         Integer customerId = o.getCustomer() != null ? o.getCustomer().getUserId() : null;
         Integer shipperId = o.getShipper() != null ? o.getShipper().getUserId() : null;
         boolean isAllowed = (customerId != null && customerId.equals(userId)) || (shipperId != null && shipperId.equals(userId));

@@ -172,6 +172,8 @@ public class OrderServiceImpl implements OrderService {
         detail.put("id", o.getOrderId());
         detail.put("receiver_email", "");
         detail.put("receiver_name", o.getCustomer() != null ? o.getCustomer().getFullName() : "");
+        // Include customer phone for frontend display on shipping/history pages
+        detail.put("phone_number", o.getCustomer() != null ? o.getCustomer().getPhone() : null);
         detail.put("delivery_address", o.getAddress() != null ? o.getAddress().getAddressLine() : "");
         detail.put("notes", o.getNote());
         detail.put("status_id", 0);
