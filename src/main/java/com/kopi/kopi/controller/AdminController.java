@@ -85,8 +85,9 @@ public class AdminController {
             @org.springframework.web.bind.annotation.RequestParam(required = false) String fullName,
             @org.springframework.web.bind.annotation.RequestParam(required = false) String phone,
             @org.springframework.web.bind.annotation.RequestParam(required = false) String email,
-            @org.springframework.web.bind.annotation.RequestParam(required = false) String roleName) {
-        return ResponseEntity.ok(userService.listCustomers(page, size, fullName, phone, email, roleName));
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String roleName,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String status) {
+        return ResponseEntity.ok(userService.listCustomers(page, size, fullName, phone, email, roleName, status));
     }
 
     @PreAuthorize("hasRole('ADMIN')")

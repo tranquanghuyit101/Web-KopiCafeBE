@@ -1,34 +1,38 @@
 package com.kopi.kopi.service;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 
 public interface IUserService {
-    @PreAuthorize("permitAll()")
-    void resetPassword(String email);
+        @PreAuthorize("permitAll()")
+        void resetPassword(String email);
 
-    @PreAuthorize("permitAll()")
-    void changePassword(String email, String newPassword);
+        @PreAuthorize("permitAll()")
+        void changePassword(String email, String newPassword);
 
-    boolean mustChangePassword(String email);
-    void clearForceChangePassword(String email);
-    java.util.List<com.kopi.kopi.dto.EmployeeSimpleDto> listEmployees();
+        boolean mustChangePassword(String email);
 
-    java.util.List<com.kopi.kopi.dto.EmployeeSimpleDto> searchEmployees(
-            String positionName,
-            String phone,
-            String email,
-            String fullName);
+        void clearForceChangePassword(String email);
 
-    com.kopi.kopi.dto.EmployeeDetailDto getEmployeeDetail(Integer userId);
+        java.util.List<com.kopi.kopi.dto.EmployeeSimpleDto> listEmployees();
 
-    void updateEmployee(Integer userId, com.kopi.kopi.dto.UpdateEmployeeRequest req);
+        java.util.List<com.kopi.kopi.dto.EmployeeSimpleDto> searchEmployees(
+                        String positionName,
+                        String phone,
+                        String email,
+                        String fullName);
 
-    void banUser(Integer userId);
+        com.kopi.kopi.dto.EmployeeDetailDto getEmployeeDetail(Integer userId);
 
-    void demoteEmployeeToCustomer(Integer userId);
+        void updateEmployee(Integer userId, com.kopi.kopi.dto.UpdateEmployeeRequest req);
 
-    org.springframework.data.domain.Page<com.kopi.kopi.dto.CustomerListDto> listCustomers(int page, int size,
-            String fullName,
-            String phone,
-            String email,
-            String roleName);
+        void banUser(Integer userId);
+
+        void demoteEmployeeToCustomer(Integer userId);
+
+        org.springframework.data.domain.Page<com.kopi.kopi.dto.CustomerListDto> listCustomers(int page, int size,
+                        String fullName,
+                        String phone,
+                        String email,
+                        String roleName,
+                        String status);
 }
