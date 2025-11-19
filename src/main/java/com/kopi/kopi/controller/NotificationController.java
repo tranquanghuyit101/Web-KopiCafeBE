@@ -4,9 +4,11 @@ import com.kopi.kopi.entity.Notification;
 import com.kopi.kopi.repository.NotificationRepository;
 import com.kopi.kopi.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -37,9 +39,9 @@ public class NotificationController {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
         Integer userId = principal.getUser().getUserId();
-        String userRole = principal.getUser().getRole() != null 
-            ? principal.getUser().getRole().getName() 
-            : "CUSTOMER";
+        String userRole = principal.getUser().getRole() != null
+                ? principal.getUser().getRole().getName()
+                : "CUSTOMER";
 
         List<Map<String, Object>> items;
         Map<String, Object> meta = new HashMap<>();
@@ -49,8 +51,8 @@ public class NotificationController {
             List<Notification> allNotifications = notificationRepository.findAllByUserIdWithOrder(userId);
             // Log để debug
             org.slf4j.LoggerFactory.getLogger(getClass()).info(
-                "Fetching all notifications for user {}: found {} notifications", 
-                userId, allNotifications.size()
+                    "Fetching all notifications for user {}: found {} notifications",
+                    userId, allNotifications.size()
             );
             items = allNotifications.stream()
                     .map(n -> notificationToMap(n, userRole))
@@ -121,14 +123,23 @@ public class NotificationController {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
         Integer userId = principal.getUser().getUserId();
-        String userRole = principal.getUser().getRole() != null 
-            ? principal.getUser().getRole().getName() 
-            : "CUSTOMER";
-        
-        List<Notification> unreadNotifications = notificationRepository.findByUser_UserIdAndIsReadFalseOrderByCreatedAtDesc(userId);
+        String userRole = principal.getUser().getRole() != null
+                ? principal.getUser().getRole().getName()
+                : "CUSTOMER";
+
+        // Lấy tất cả notifications đã JOIN order/table/address để tránh lazy-load lỗi
+        List<Notification> allNotifications =
+                notificationRepository.findAllByUserIdWithOrder(userId);
+
+        // Lọc lại chỉ những cái chưa đọc
+        List<Notification> unreadNotifications = allNotifications.stream()
+                .filter(n -> Boolean.FALSE.equals(n.getIsRead()))
+                .toList();
+
+        // Map sang DTO giống list bình thường
         List<Map<String, Object>> items = unreadNotifications.stream()
                 .map(n -> notificationToMap(n, userRole))
-                .collect(Collectors.toList());
+                .toList();
 
         return ResponseEntity.ok(Map.of("data", items));
     }
@@ -140,26 +151,38 @@ public class NotificationController {
     @PatchMapping("/{id}/read")
     public ResponseEntity<Map<String, Object>> markAsRead(@PathVariable("id") Integer id) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        Integer userId = ((UserPrincipal) auth.getPrincipal()).getUser().getUserId();
+        UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
+        Integer currentUserId = principal.getUser().getUserId();
+        String roleName = principal.getUser().getRole() != null
+                ? principal.getUser().getRole().getName()
+                : "CUSTOMER";
 
         Notification notification = notificationRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Notification not found"));
-
-        // Kiểm tra xem thông báo có thuộc về user hiện tại không
-        if (!notification.getUser().getUserId().equals(userId)) {
-            return ResponseEntity.status(403).body(Map.of("message", "Forbidden"));
+        // Nếu notification thuộc user khác thì chặn lại (tránh 500)
+        if (notification.getUser() != null
+                && !notification.getUser().getUserId().equals(currentUserId)) {
+            LoggerFactory.getLogger(getClass()).warn(
+                    "User {} tried to mark notification {} of user {}",
+                    currentUserId, id, notification.getUser().getUserId()
+            );
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Forbidden"));
         }
-
-        UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
-        String userRole = principal.getUser().getRole() != null 
-            ? principal.getUser().getRole().getName() 
-            : "CUSTOMER";
-        
-        notification.setIsRead(true);
-        notificationRepository.save(notification);
-
-        return ResponseEntity.ok(Map.of("message", "OK", "data", notificationToMap(notification, userRole)));
+        // Gán owner nếu vì data cũ mà bị null
+        if (notification.getUser() == null) {
+            notification.setUser(principal.getUser());
+        }
+        if (!Boolean.TRUE.equals(notification.getIsRead())) {
+            notification.setIsRead(true);
+            notificationRepository.save(notification);
+        }
+        return ResponseEntity.ok(Map.of(
+                "message", "OK",
+                "data", notificationToMap(notification, roleName)
+        ));
     }
+
 
     /**
      * Đánh dấu tất cả thông báo là đã đọc
@@ -200,7 +223,8 @@ public class NotificationController {
 
     /**
      * Chuyển đổi Notification entity thành Map để trả về JSON
-     * @param n Notification entity
+     *
+     * @param n        Notification entity
      * @param userRole Role của user hiện tại (CUSTOMER, STAFF, ADMIN)
      */
     private Map<String, Object> notificationToMap(Notification n, String userRole) {
@@ -211,14 +235,12 @@ public class NotificationController {
         map.put("type", n.getType());
         map.put("isRead", n.getIsRead());
         map.put("createdAt", n.getCreatedAt());
-        
         // Thêm thông tin order nếu có
         if (n.getOrder() != null) {
             Map<String, Object> orderInfo = new HashMap<>();
             orderInfo.put("orderId", n.getOrder().getOrderId());
             orderInfo.put("orderCode", n.getOrder().getOrderCode());
             orderInfo.put("status", n.getOrder().getStatus());
-            
             // Xác định loại đơn hàng: SHIPPING (có address) hoặc TABLE (có table)
             String orderType = null;
             if (n.getOrder().getAddress() != null) {
@@ -228,14 +250,14 @@ public class NotificationController {
                 orderInfo.put("tableNumber", n.getOrder().getTable().getNumber());
             }
             orderInfo.put("orderType", orderType);
-            
-            // Thêm redirect URL dựa trên role và order type
             String redirectUrl = null;
-            if ("CUSTOMER".equalsIgnoreCase(userRole)) {
-                // Customer redirect về order detail page (tracking page) để xem chi tiết và tracking
+            if ("ADMIN".equalsIgnoreCase(userRole)) {
+                redirectUrl = "/manage-order";
+            }
+            else if ("CUSTOMER".equalsIgnoreCase(userRole)) {
                 redirectUrl = "/history/" + n.getOrder().getOrderId();
-            } else if (orderType != null) {
-                // Staff redirect về shipping hoặc table order
+            }
+            else if (orderType != null) {
                 if ("SHIPPING".equals(orderType)) {
                     redirectUrl = "/shipping-order";
                 } else if ("TABLE".equals(orderType)) {
@@ -243,10 +265,8 @@ public class NotificationController {
                 }
             }
             orderInfo.put("redirectUrl", redirectUrl);
-            
             map.put("order", orderInfo);
         }
-        
         return map;
     }
 }
